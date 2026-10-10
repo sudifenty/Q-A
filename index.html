@@ -1,0 +1,1893 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f7f2">
+  <title>Daily Science — Guided Revision</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1f3028;
+      --muted: #6a7870;
+      --line: #e2e9e2;
+      --paper: #ffffff;
+      --canvas: #f5f7f2;
+      --green: #287a55;
+      --green-dark: #1f6344;
+      --green-soft: #eaf5ed;
+      --lime: #d5ef9f;
+      --orange: #f4a261;
+      --shadow: 0 16px 42px rgba(31, 56, 42, .075);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--canvas); min-width: 320px; }
+    button { font: inherit; }
+    .topbar { height: 76px; border-bottom: 1px solid rgba(226,233,226,.85); background: rgba(255,255,255,.88); display:flex; align-items:center; }
+    .topbar-inner { width: min(1160px, calc(100% - 48px)); margin: 0 auto; display:flex; justify-content:space-between; align-items:center; }
+    .brand { display:flex; align-items:center; gap:12px; font-weight:800; letter-spacing:-.035em; font-size:19px; }
+    .brand-mark { width:38px; height:38px; display:grid; place-items:center; border-radius:13px; background:var(--green); color:white; box-shadow:0 5px 13px rgba(40,122,85,.2); }
+    .brand-mark svg { width:21px; height:21px; }
+    .top-right { display:flex; align-items:center; gap:12px; }
+    .demo-pill { display:flex; align-items:center; gap:7px; border:1px solid #f4d8ac; background:#fff8e9; color:#8b5a18; border-radius:999px; padding:7px 11px; font-size:11px; font-weight:800; letter-spacing:.045em; text-transform:uppercase; }
+    .demo-pill .dot { width:7px; height:7px; background:#e49a31; border-radius:50%; }
+    .profile { width:36px; height:36px; border-radius:50%; background:#e3efe6; color:#2d6747; display:grid; place-items:center; font-size:12px; font-weight:800; }
+    main { width:min(1160px, calc(100% - 48px)); margin:0 auto; padding:38px 0 50px; }
+    .intro { display:flex; align-items:flex-start; justify-content:space-between; gap:30px; margin:0 0 29px; }
+    .eyebrow { margin:0 0 11px; color:var(--green); font-size:11px; line-height:1.3; font-weight:850; letter-spacing:.115em; text-transform:uppercase; }
+    h1 { font-size:clamp(29px, 4vw, 42px); line-height:1.08; letter-spacing:-.055em; margin:0; font-weight:780; }
+    .intro-copy { max-width:620px; color:var(--muted); font-size:15px; line-height:1.6; margin:13px 0 0; }
+    .target-card { flex:0 0 210px; padding:17px 19px 16px; border-radius:17px; border:1px solid #dfe9de; background:#fff; box-shadow:0 8px 22px rgba(31,56,42,.04); }
+    .target-label { font-size:10px; font-weight:850; letter-spacing:.105em; text-transform:uppercase; color:#708078; }
+    .target-value { margin-top:4px; display:flex; align-items:baseline; gap:6px; color:#1f6344; }
+    .target-value strong { font-size:35px; line-height:1; letter-spacing:-.06em; }
+    .target-value span { font-size:14px; font-weight:650; }
+    .target-note { color:#87938d; font-size:11px; margin-top:7px; }
+    .layout { display:grid; grid-template-columns:minmax(0, 1fr) 286px; gap:20px; align-items:start; }
+    .study-panel, .side-panel { border:1px solid var(--line); background:var(--paper); border-radius:21px; box-shadow:var(--shadow); }
+    .study-panel { overflow:hidden; min-height:460px; }
+    .panel-top { padding:19px 25px; background:#fbfcfa; border-bottom:1px solid #edf1ec; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+    .panel-course { display:flex; align-items:center; gap:9px; color:#53655a; font-size:12px; font-weight:750; }
+    .course-icon { width:27px; height:27px; border-radius:9px; display:grid; place-items:center; color:var(--green); background:var(--green-soft); }
+    .course-icon svg { width:15px; height:15px; }
+    .assignment-meta { font-size:11px; color:#839089; text-align:right; }
+    .carryover { margin:17px 25px -3px; padding:10px 12px; border-radius:10px; border:1px solid #f3dfba; background:#fff9ed; color:#835f27; font-size:12px; line-height:1.45; }
+    .progress-section { padding:25px 25px 0; }
+    .progress-topline { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:11px; }
+    .question-position { color:#27382f; font-size:13px; font-weight:800; letter-spacing:-.01em; }
+    .question-position .number { color:var(--green); font-size:17px; letter-spacing:-.04em; margin-right:3px; }
+    .completed-count { color:#7c8982; font-size:12px; font-weight:650; }
+    .track { width:100%; height:7px; background:#edf1ec; border-radius:99px; overflow:hidden; }
+    .track-fill { height:100%; width:0%; border-radius:99px; background:linear-gradient(90deg, #53a872, #2b8057); transition:width .28s ease; }
+    .question-content { padding:26px 25px 24px; }
+    .topic-tag { display:inline-flex; align-items:center; gap:6px; color:#397153; background:#eef7ef; border:1px solid #deeddf; border-radius:999px; padding:6px 10px; font-size:10px; line-height:1; font-weight:800; letter-spacing:.065em; text-transform:uppercase; }
+    .topic-tag svg { width:12px; height:12px; }
+    h2.question-text { margin:18px 0 22px; color:#23352b; font-size:clamp(24px, 3.1vw, 34px); line-height:1.25; letter-spacing:-.045em; font-weight:730; max-width:790px; }
+    .answer-card { border-radius:15px; padding:18px 20px 19px; background:#f2f8f1; border:1px solid #e1eee0; border-left:4px solid #67a978; }
+    .answer-title { display:flex; justify-content:space-between; align-items:center; gap:10px; color:#326d48; font-size:11px; font-weight:850; text-transform:uppercase; letter-spacing:.09em; }
+    .answer-title span { color:#829489; font-size:10px; font-weight:700; letter-spacing:.035em; text-transform:none; }
+    .answer-text { margin:10px 0 0; color:#34493a; font-size:16px; line-height:1.65; }
+    .actions { display:flex; align-items:center; justify-content:space-between; gap:14px; border-top:1px solid #edf1ec; background:#fff; padding:17px 25px 20px; }
+    .button { min-height:44px; border:0; border-radius:11px; padding:0 17px; font-size:13px; font-weight:760; display:inline-flex; align-items:center; justify-content:center; gap:9px; cursor:pointer; transition:transform .14s ease, background .14s ease, box-shadow .14s ease; }
+    .button:focus-visible { outline:3px solid #a9d7b5; outline-offset:2px; }
+    .button:hover:not(:disabled) { transform:translateY(-1px); }
+    .button:disabled { opacity:.45; cursor:not-allowed; }
+    .button-secondary { color:#41534a; background:#f3f6f2; border:1px solid #e5ebe4; }
+    .button-secondary:hover:not(:disabled) { background:#eaf0e9; }
+    .button-primary { color:#fff; background:var(--green); box-shadow:0 7px 15px rgba(40,122,85,.16); }
+    .button-primary:hover:not(:disabled) { background:var(--green-dark); box-shadow:0 9px 18px rgba(40,122,85,.22); }
+    .button-primary svg, .button-secondary svg { width:16px; height:16px; }
+    .action-hint { flex:1; text-align:center; color:#8a9690; font-size:11px; line-height:1.4; }
+    .side-panel { padding:22px 20px 19px; }
+    .side-eyebrow { margin:0 0 10px; color:#718078; font-size:10px; font-weight:850; letter-spacing:.11em; text-transform:uppercase; }
+    .side-panel h3 { margin:0; color:#25372d; font-size:19px; line-height:1.3; letter-spacing:-.035em; }
+    .side-desc { margin:8px 0 19px; color:#78857e; font-size:12px; line-height:1.55; }
+    .steps { display:grid; gap:13px; list-style:none; margin:0; padding:0; }
+    .step { display:flex; align-items:flex-start; gap:10px; color:#536159; font-size:12px; line-height:1.45; }
+    .step-number { width:22px; height:22px; flex:0 0 22px; display:grid; place-items:center; background:#eef6ed; border-radius:7px; color:#397451; font-size:10px; font-weight:850; }
+    .side-divider { height:1px; background:#edf1ec; margin:19px 0 15px; }
+    .side-stat { display:flex; justify-content:space-between; gap:10px; font-size:11px; color:#7a8880; margin-top:9px; }
+    .side-stat strong { color:#34483a; font-size:11px; }
+    .sync-note { display:flex; align-items:flex-start; gap:9px; padding:11px; margin-top:17px; color:#795b28; border:1px solid #f1e1c4; background:#fff9ee; border-radius:11px; font-size:10px; line-height:1.5; }
+    .sync-note svg { flex:0 0 14px; width:14px; height:14px; margin-top:1px; }
+    .page-footer { margin-top:20px; display:flex; justify-content:space-between; gap:16px; color:#8b9790; font-size:10px; line-height:1.5; }
+    .footer-reset { border:0; background:none; padding:0; color:#6c8174; font:inherit; text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
+    .complete-wrap { padding:60px 28px 57px; text-align:center; }
+    .complete-icon { width:62px; height:62px; margin:0 auto 18px; display:grid; place-items:center; border-radius:22px; background:#e7f4e8; color:#2e8459; }
+    .complete-icon svg { width:30px; height:30px; }
+    .complete-wrap h2 { margin:0; font-size:30px; letter-spacing:-.05em; }
+    .complete-wrap .complete-text { margin:11px auto 20px; max-width:420px; color:#738078; font-size:14px; line-height:1.6; }
+    .complete-score { display:inline-flex; align-items:baseline; gap:5px; padding:12px 18px; border:1px solid #e2ede2; background:#f6faf5; border-radius:13px; color:#2b7049; }
+    .complete-score strong { font-size:25px; letter-spacing:-.06em; }
+    .complete-score span { color:#6e8074; font-size:12px; font-weight:700; }
+    .complete-small { margin:17px 0 0; color:#929d96; font-size:11px; }
+    .empty-wrap { padding:58px 28px; text-align:center; }
+    .empty-wrap h2 { margin:0; font-size:27px; letter-spacing:-.04em; }
+    .empty-wrap p { max-width:440px; margin:13px auto 0; color:#748078; font-size:14px; line-height:1.65; }
+    .bank-count { display:inline-flex; margin-top:19px; padding:9px 13px; border:1px solid #e4ebe1; border-radius:999px; color:#52665a; background:#f6faf5; font-size:11px; font-weight:750; }
+    @media (max-width: 900px) {
+      main, .topbar-inner { width:min(100% - 34px, 760px); }
+      .layout { grid-template-columns:1fr; }
+      .side-panel { display:grid; grid-template-columns:1.05fr 1fr; column-gap:20px; }
+      .side-panel .side-eyebrow, .side-panel h3, .side-panel .side-desc { grid-column:1; }
+      .steps { grid-column:2; grid-row:1 / span 3; align-self:center; }
+      .side-divider, .side-stat, .sync-note { grid-column:1 / -1; }
+      .side-divider { margin-top:16px; }
+    }
+    @media (max-width: 620px) {
+      .topbar { height:66px; }
+      .topbar-inner, main { width:calc(100% - 28px); }
+      main { padding-top:27px; }
+      .brand { font-size:17px; }
+      .brand-mark { width:34px; height:34px; border-radius:11px; }
+      .demo-pill { padding:6px 8px; font-size:9px; }
+      .profile { width:32px; height:32px; }
+      .intro { display:block; margin-bottom:21px; }
+      h1 { font-size:31px; }
+      .intro-copy { font-size:13px; margin-top:10px; }
+      .target-card { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:16px; padding:12px 14px; }
+      .target-card .target-copy { flex:1; }
+      .target-label { font-size:9px; }
+      .target-value { margin-top:2px; }
+      .target-value strong { font-size:27px; }
+      .target-note { margin-top:1px; font-size:10px; }
+      .layout { gap:14px; }
+      .study-panel { border-radius:17px; min-height:0; }
+      .panel-top { padding:14px 16px; }
+      .panel-course { font-size:11px; }
+      .assignment-meta { font-size:9px; }
+      .carryover { margin:13px 15px -3px; font-size:11px; }
+      .progress-section { padding:20px 16px 0; }
+      .question-position { font-size:12px; }
+      .question-position .number { font-size:15px; }
+      .completed-count { font-size:10px; }
+      .question-content { padding:22px 16px 18px; }
+      h2.question-text { font-size:26px; margin:15px 0 18px; }
+      .answer-card { padding:15px 15px 16px; }
+      .answer-text { font-size:14px; }
+      .actions { padding:14px 15px 16px; flex-wrap:wrap; gap:10px; }
+      .actions .button-secondary { order:1; }
+      .actions .action-hint { order:3; width:100%; flex:0 0 100%; text-align:left; padding:1px 2px 0; }
+      .actions .button-primary { order:2; margin-left:auto; }
+      .button { min-height:42px; padding:0 13px; font-size:12px; }
+      .side-panel { display:block; padding:18px 16px; }
+      .side-panel h3 { font-size:18px; }
+      .side-desc { margin-bottom:15px; }
+      .steps { gap:10px; }
+      .side-divider { margin:16px 0 13px; }
+      .sync-note { font-size:10px; }
+      .page-footer { flex-direction:column; gap:5px; font-size:9px; }
+      .complete-wrap { padding:47px 20px; }
+      .complete-wrap h2 { font-size:27px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior:auto !important; transition:none !important; } }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand" aria-label="Daily Science home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 5.5c2.9-.8 5.3-.3 7 1.2 1.7-1.5 4.1-2 7-1.2v12.2c-2.8-.8-5.2-.3-7 1.3-1.8-1.6-4.2-2.1-7-1.3V5.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 6.8v12" stroke="currentColor" stroke-width="1.5"/><path d="M8 9h1.4M8 12h1.4M14.6 9H16M14.6 12H16" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        </span>
+        <span>Daily Science</span>
+      </div>
+      <div class="top-right">
+        <span class="demo-pill"><span class="dot"></span> Prototype</span>
+        <span class="profile" aria-label="Student preview">ST</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="intro" aria-labelledby="page-title">
+      <div>
+        <p class="eyebrow">PRIMARY 4 SCIENCE · DAILY REVISION</p>
+        <h1 id="page-title">Study one question at a time.</h1>
+        <p class="intro-copy">Each question comes with its answer guide right below it. Read both, mark the item studied, and keep going until you reach your daily target.</p>
+      </div>
+      <div class="target-card" aria-label="Daily question target">
+        <div class="target-copy">
+          <div class="target-label">Today's target</div>
+          <div class="target-value"><strong id="target-value">20</strong><span>questions</span></div>
+          <div class="target-note">Sample admin-set target</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="layout" aria-label="Daily study set">
+      <article class="study-panel" aria-live="polite">
+        <div class="panel-top">
+          <div class="panel-course">
+            <span class="course-icon" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none"><path d="M3.5 4.5c2.5-.7 4.7-.2 6.5 1.1 1.8-1.3 4-1.8 6.5-1.1v10.8c-2.5-.7-4.7-.2-6.5 1.1-1.8-1.3-4-1.8-6.5-1.1V4.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M10 5.6v10.8" stroke="currentColor" stroke-width="1.4"/></svg></span>
+            <span>Primary 4 Science</span>
+          </div>
+          <div class="assignment-meta" id="assignment-meta">Daily study set</div>
+        </div>
+        <div id="carryover" class="carryover" hidden></div>
+        <div class="progress-section" id="progress-section">
+          <div class="progress-topline">
+            <div class="question-position"><span class="number" id="position-number">01</span><span id="position-total">/ 20</span></div>
+            <div class="completed-count" id="completed-count">0 of 20 studied</div>
+          </div>
+          <div class="track" role="progressbar" aria-label="Daily set progress" aria-valuemin="0" aria-valuemax="20" aria-valuenow="0" id="progress-track"><div class="track-fill" id="progress-fill"></div></div>
+        </div>
+        <div id="study-content">
+          <div class="question-content">
+            <span class="topic-tag" id="topic-tag"></span>
+            <h2 class="question-text" id="question-text"></h2>
+            <section class="answer-card" aria-labelledby="answer-heading">
+              <div class="answer-title"><span id="answer-heading">Answer guide</span><span>Read and review</span></div>
+              <p class="answer-text" id="answer-text"></p>
+            </section>
+          </div>
+          <div class="actions">
+            <button class="button button-secondary" id="previous-button" type="button" aria-label="Go to previous question">
+              <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Previous
+            </button>
+            <span class="action-hint" id="action-hint">Read the question and its answer, then mark it studied.</span>
+            <button class="button button-primary" id="primary-button" type="button">
+              <span id="primary-label">Mark studied &amp; continue</span>
+              <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10h11M10 5l5 5-5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+        <div id="complete-content" hidden></div>
+      </article>
+
+      <aside class="side-panel" aria-label="How the daily study set works">
+        <p class="side-eyebrow">A simple daily rhythm</p>
+        <h3>Question and answer, together.</h3>
+        <p class="side-desc">This is guided revision. There is no hidden answer or test score—just steady progress through the study guide.</p>
+        <ol class="steps">
+          <li class="step"><span class="step-number">01</span><span>Read the question at the top of the card.</span></li>
+          <li class="step"><span class="step-number">02</span><span>Review its answer guide directly below.</span></li>
+          <li class="step"><span class="step-number">03</span><span>Tap <strong>Mark studied</strong> to count it toward the target.</span></li>
+        </ol>
+        <div class="side-divider"></div>
+        <div class="side-stat"><span>Daily target</span><strong id="side-target">20 questions</strong></div>
+        <div class="side-stat"><span>Questions in this guide</span><strong id="bank-total">160</strong></div>
+        <div class="sync-note">
+          <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2.8 17 6v4.4c0 3.6-2.4 5.8-7 7.1-4.6-1.3-7-3.5-7-7.1V6l7-3.2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M10 6.3v4.2M10 13.3h.01" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          <span><strong>Prototype:</strong> progress is stored in this browser only for now. Admin sign-in, target changes, and progress reporting will be connected once the admin app/API details are available.</span>
+        </div>
+      </aside>
+    </section>
+
+    <footer class="page-footer">
+      <span>Question guide: 160 Primary 4 Science Q&amp;A items · Four topics</span>
+      <span id="storage-status">Preview progress is saved on this device.</span>
+      <span><button class="footer-reset" id="reset-button" type="button">Reset preview progress</button></span>
+    </footer>
+  </main>
+
+  <script id="question-bank" type="application/json">[
+  {
+    "id": "P4-SCI-Q001",
+    "number": 1,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "What is a flowering plant?",
+    "answer": "A flowering plant is a plant that produces flowers."
+  },
+  {
+    "id": "P4-SCI-Q002",
+    "number": 2,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "Give two examples of flowering plants.",
+    "answer": "Examples include maize, beans, hibiscus and mango."
+  },
+  {
+    "id": "P4-SCI-Q003",
+    "number": 3,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "Why are flowers important to flowering plants?",
+    "answer": "Flowers help flowering plants to reproduce by forming seeds, often after pollination and fertilisation."
+  },
+  {
+    "id": "P4-SCI-Q004",
+    "number": 4,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "Name one flowering plant commonly grown in Uganda.",
+    "answer": "Examples include maize, beans, hibiscus or mango."
+  },
+  {
+    "id": "P4-SCI-Q005",
+    "number": 5,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "Name the main parts of a flower.",
+    "answer": "The main parts are sepals, petals, stamens and the carpel (pistil)."
+  },
+  {
+    "id": "P4-SCI-Q006",
+    "number": 6,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "Which part of a flower protects it before it opens?",
+    "answer": "The sepals protect the flower when it is still a bud."
+  },
+  {
+    "id": "P4-SCI-Q007",
+    "number": 7,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "What is the function of the petals?",
+    "answer": "Petals attract pollinators such as insects."
+  },
+  {
+    "id": "P4-SCI-Q008",
+    "number": 8,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "Which flower part contains the ovules?",
+    "answer": "The ovules are found in the ovary, which is part of the carpel."
+  },
+  {
+    "id": "P4-SCI-Q009",
+    "number": 9,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "What are sepals?",
+    "answer": "Sepals are the small, usually green parts that surround and protect a flower bud."
+  },
+  {
+    "id": "P4-SCI-Q010",
+    "number": 10,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "What is the function of sepals?",
+    "answer": "They protect the flower while it is still a bud."
+  },
+  {
+    "id": "P4-SCI-Q011",
+    "number": 11,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "How do sepals help a young flower?",
+    "answer": "They cover and protect the young flower from damage."
+  },
+  {
+    "id": "P4-SCI-Q012",
+    "number": 12,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "What may happen if the sepals are damaged before a flower opens?",
+    "answer": "The young flower may be damaged and may fail to develop normally."
+  },
+  {
+    "id": "P4-SCI-Q013",
+    "number": 13,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "What are petals?",
+    "answer": "Petals are the parts of a flower, often coloured, found inside the sepals."
+  },
+  {
+    "id": "P4-SCI-Q014",
+    "number": 14,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "Give two functions of petals.",
+    "answer": "They attract pollinators and help protect the reproductive parts of the flower."
+  },
+  {
+    "id": "P4-SCI-Q015",
+    "number": 15,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "Why are many petals brightly coloured?",
+    "answer": "Bright colours attract insects and other pollinators."
+  },
+  {
+    "id": "P4-SCI-Q016",
+    "number": 16,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "How can petals help in pollination?",
+    "answer": "They attract pollinators, which may carry pollen from one flower to another."
+  },
+  {
+    "id": "P4-SCI-Q017",
+    "number": 17,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "What are stamens?",
+    "answer": "Stamens are the male reproductive parts of a flower."
+  },
+  {
+    "id": "P4-SCI-Q018",
+    "number": 18,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "Name the two main parts of a stamen.",
+    "answer": "The anther and the filament."
+  },
+  {
+    "id": "P4-SCI-Q019",
+    "number": 19,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "What is produced in the anther?",
+    "answer": "Pollen grains are produced in the anther."
+  },
+  {
+    "id": "P4-SCI-Q020",
+    "number": 20,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "Why are stamens important in reproduction?",
+    "answer": "They produce pollen needed for reproduction."
+  },
+  {
+    "id": "P4-SCI-Q021",
+    "number": 21,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "What is a carpel?",
+    "answer": "A carpel is the female reproductive part of a flower."
+  },
+  {
+    "id": "P4-SCI-Q022",
+    "number": 22,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "Name the main parts of a carpel.",
+    "answer": "The stigma, style and ovary."
+  },
+  {
+    "id": "P4-SCI-Q023",
+    "number": 23,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "What is the function of the stigma?",
+    "answer": "The stigma receives pollen grains."
+  },
+  {
+    "id": "P4-SCI-Q024",
+    "number": 24,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "What happens to the ovules after fertilisation?",
+    "answer": "After fertilisation, the ovules develop into seeds."
+  },
+  {
+    "id": "P4-SCI-Q025",
+    "number": 25,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "What is pollination?",
+    "answer": "Pollination is the transfer of pollen grains from the anther to the stigma of a flower."
+  },
+  {
+    "id": "P4-SCI-Q026",
+    "number": 26,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "Name two agents of pollination.",
+    "answer": "Examples are insects and wind."
+  },
+  {
+    "id": "P4-SCI-Q027",
+    "number": 27,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "What is fertilisation in flowering plants?",
+    "answer": "Fertilisation is the joining of the male cell from pollen with the female cell in the ovule."
+  },
+  {
+    "id": "P4-SCI-Q028",
+    "number": 28,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "How is pollination different from fertilisation?",
+    "answer": "Pollination is the transfer of pollen to the stigma; fertilisation is the joining of the male and female cells."
+  },
+  {
+    "id": "P4-SCI-Q029",
+    "number": 29,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "What is a seed?",
+    "answer": "A seed is a part formed from a fertilised ovule and can grow into a new plant."
+  },
+  {
+    "id": "P4-SCI-Q030",
+    "number": 30,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "Where are seeds formed in a flowering plant?",
+    "answer": "Seeds are formed inside the ovary, which usually develops into a fruit."
+  },
+  {
+    "id": "P4-SCI-Q031",
+    "number": 31,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "Why are seeds important to plants?",
+    "answer": "Seeds grow into new plants and help plants reproduce."
+  },
+  {
+    "id": "P4-SCI-Q032",
+    "number": 32,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "Give four examples of seeds used as food.",
+    "answer": "Beans, maize, peas and groundnuts."
+  },
+  {
+    "id": "P4-SCI-Q033",
+    "number": 33,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "What is germination?",
+    "answer": "Germination is the process by which a seed begins to grow into a seedling."
+  },
+  {
+    "id": "P4-SCI-Q034",
+    "number": 34,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "Name three conditions needed for seed germination.",
+    "answer": "Water, air (oxygen) and suitable warmth."
+  },
+  {
+    "id": "P4-SCI-Q035",
+    "number": 35,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "Why does a seed need water during germination?",
+    "answer": "Water softens the seed coat and helps the seed begin its growth processes."
+  },
+  {
+    "id": "P4-SCI-Q036",
+    "number": 36,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "What happens to a seedling after germination?",
+    "answer": "The seedling develops roots, a shoot and leaves as it grows."
+  },
+  {
+    "id": "P4-SCI-Q037",
+    "number": 37,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "Mention five uses of plants to people.",
+    "answer": "Plants provide food, medicine, timber, firewood and materials for making things."
+  },
+  {
+    "id": "P4-SCI-Q038",
+    "number": 38,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "How do plants provide food?",
+    "answer": "People eat plant parts such as roots, stems, leaves, fruits and seeds."
+  },
+  {
+    "id": "P4-SCI-Q039",
+    "number": 39,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "How do plants provide materials for building or making things?",
+    "answer": "Plants provide timber, poles, fibres and materials used to make paper, baskets and furniture."
+  },
+  {
+    "id": "P4-SCI-Q040",
+    "number": 40,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Plant Life",
+    "question": "Why should useful plants be protected?",
+    "answer": "Useful plants provide food and other materials, protect the environment and support people's livelihoods."
+  },
+  {
+    "id": "P4-SCI-Q041",
+    "number": 41,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "What is an annual crop?",
+    "answer": "An annual crop is a crop that completes its life cycle within one year or one growing season."
+  },
+  {
+    "id": "P4-SCI-Q042",
+    "number": 42,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Give four examples of common annual crops.",
+    "answer": "Maize, beans, rice and sorghum."
+  },
+  {
+    "id": "P4-SCI-Q043",
+    "number": 43,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Why are maize and beans called annual crops?",
+    "answer": "They grow, produce seeds and complete their life cycle within one growing season."
+  },
+  {
+    "id": "P4-SCI-Q044",
+    "number": 44,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Name two annual crops commonly grown in Uganda.",
+    "answer": "Maize and beans."
+  },
+  {
+    "id": "P4-SCI-Q045",
+    "number": 45,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Name the main requirements for growing maize.",
+    "answer": "Suitable soil, water, sunlight, air, healthy seeds and proper care."
+  },
+  {
+    "id": "P4-SCI-Q046",
+    "number": 46,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "What are two uses of maize?",
+    "answer": "Maize is used as food for people and feed for animals."
+  },
+  {
+    "id": "P4-SCI-Q047",
+    "number": 47,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Why should maize be planted in fertile soil?",
+    "answer": "Fertile soil supplies nutrients needed for healthy growth and good yields."
+  },
+  {
+    "id": "P4-SCI-Q048",
+    "number": 48,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Mention two problems that can reduce maize yield.",
+    "answer": "Pests and diseases; drought or poor soil."
+  },
+  {
+    "id": "P4-SCI-Q049",
+    "number": 49,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "What conditions are needed for growing beans?",
+    "answer": "Suitable soil, water, warmth, sunlight and healthy seeds."
+  },
+  {
+    "id": "P4-SCI-Q050",
+    "number": 50,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Mention three uses of beans.",
+    "answer": "Beans are eaten as food, sold for income and used to improve soil fertility when properly managed."
+  },
+  {
+    "id": "P4-SCI-Q051",
+    "number": 51,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Why should beans be protected from pests?",
+    "answer": "Pests damage the plants and seeds and can reduce the harvest."
+  },
+  {
+    "id": "P4-SCI-Q052",
+    "number": 52,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "How can a farmer improve bean production?",
+    "answer": "Use healthy seeds, prepare the land well, plant at the right time, weed and control pests and diseases."
+  },
+  {
+    "id": "P4-SCI-Q053",
+    "number": 53,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "What is sorghum?",
+    "answer": "Sorghum is a cereal crop grown for its grain."
+  },
+  {
+    "id": "P4-SCI-Q054",
+    "number": 54,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Mention two uses of sorghum.",
+    "answer": "It is used as food and animal feed; some varieties are used to make drinks."
+  },
+  {
+    "id": "P4-SCI-Q055",
+    "number": 55,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Why can sorghum be important in areas with less rainfall?",
+    "answer": "It can tolerate drier conditions better than some other cereal crops."
+  },
+  {
+    "id": "P4-SCI-Q056",
+    "number": 56,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Name one product made from sorghum.",
+    "answer": "Flour or porridge can be made from sorghum grain."
+  },
+  {
+    "id": "P4-SCI-Q057",
+    "number": 57,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Name five garden tools.",
+    "answer": "Hoe, rake, panga, spade and watering can."
+  },
+  {
+    "id": "P4-SCI-Q058",
+    "number": 58,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "What is a hoe used for?",
+    "answer": "A hoe is used for digging, making planting holes and weeding."
+  },
+  {
+    "id": "P4-SCI-Q059",
+    "number": 59,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "What is a rake used for?",
+    "answer": "A rake is used for collecting rubbish and levelling soil."
+  },
+  {
+    "id": "P4-SCI-Q060",
+    "number": 60,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Why should garden tools be cleaned and stored safely?",
+    "answer": "Cleaning and safe storage prevent rust, damage and accidents and help tools last longer."
+  },
+  {
+    "id": "P4-SCI-Q061",
+    "number": 61,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Mention the main steps followed when growing an annual crop.",
+    "answer": "Clear the land, prepare the soil, select and plant seeds, water when needed, weed, control pests and diseases, and harvest at the right time."
+  },
+  {
+    "id": "P4-SCI-Q062",
+    "number": 62,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Why is land prepared before planting?",
+    "answer": "Land is prepared to loosen the soil, remove weeds and make planting easier."
+  },
+  {
+    "id": "P4-SCI-Q063",
+    "number": 63,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Why is weeding important?",
+    "answer": "Weeding reduces competition for water, light, space and nutrients."
+  },
+  {
+    "id": "P4-SCI-Q064",
+    "number": 64,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Why should crops be harvested at the right time?",
+    "answer": "Harvesting at the right time helps prevent losses and gives good-quality produce."
+  },
+  {
+    "id": "P4-SCI-Q065",
+    "number": 65,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "What is a crop disease?",
+    "answer": "A crop disease is a condition that harms a crop and affects its normal growth."
+  },
+  {
+    "id": "P4-SCI-Q066",
+    "number": 66,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Mention two signs of disease in crops.",
+    "answer": "Yellowing leaves, spots on leaves, wilting or rotting."
+  },
+  {
+    "id": "P4-SCI-Q067",
+    "number": 67,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "How can crop diseases reduce food production?",
+    "answer": "Diseases weaken or kill plants and reduce the amount and quality of produce."
+  },
+  {
+    "id": "P4-SCI-Q068",
+    "number": 68,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Give two ways of controlling crop diseases.",
+    "answer": "Use healthy planting materials and resistant varieties; remove infected plants and seek appropriate control advice."
+  },
+  {
+    "id": "P4-SCI-Q069",
+    "number": 69,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "What is a crop pest?",
+    "answer": "A crop pest is an organism that damages crops."
+  },
+  {
+    "id": "P4-SCI-Q070",
+    "number": 70,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Give four examples of crop pests.",
+    "answer": "Locusts, aphids, caterpillars and weevils."
+  },
+  {
+    "id": "P4-SCI-Q071",
+    "number": 71,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "How do pests damage crops?",
+    "answer": "They may eat leaves, stems, roots, flowers, fruits or seeds."
+  },
+  {
+    "id": "P4-SCI-Q072",
+    "number": 72,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Mention two ways of controlling crop pests.",
+    "answer": "Remove pests by hand where safe and suitable; use traps or recommended pest-control methods."
+  },
+  {
+    "id": "P4-SCI-Q073",
+    "number": 73,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Why should pests and diseases be controlled?",
+    "answer": "To protect crops and improve the quantity and quality of the harvest."
+  },
+  {
+    "id": "P4-SCI-Q074",
+    "number": 74,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Mention safe methods of controlling crop pests.",
+    "answer": "Use hand-picking, traps, crop rotation, field sanitation and only approved chemicals according to instructions."
+  },
+  {
+    "id": "P4-SCI-Q075",
+    "number": 75,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Why should farmers avoid careless use of chemicals?",
+    "answer": "Chemicals can poison people and animals, contaminate food and water, and harm useful organisms."
+  },
+  {
+    "id": "P4-SCI-Q076",
+    "number": 76,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "How can good field hygiene reduce pests and diseases?",
+    "answer": "Removing weeds and crop remains can reduce places where pests and disease-causing organisms survive."
+  },
+  {
+    "id": "P4-SCI-Q077",
+    "number": 77,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Why should crops be watered when necessary?",
+    "answer": "Water helps seeds germinate and plants grow, especially during dry periods."
+  },
+  {
+    "id": "P4-SCI-Q078",
+    "number": 78,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Why is thinning sometimes done?",
+    "answer": "Thinning reduces overcrowding so that remaining plants get enough space, light, water and nutrients."
+  },
+  {
+    "id": "P4-SCI-Q079",
+    "number": 79,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "Why should farmers remove weeds?",
+    "answer": "Weeds compete with crops for water, light, space and nutrients."
+  },
+  {
+    "id": "P4-SCI-Q080",
+    "number": 80,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Growing Crops",
+    "question": "How does proper crop care increase yield?",
+    "answer": "Healthy crops receive the conditions and care they need, so they are more likely to produce a good harvest."
+  },
+  {
+    "id": "P4-SCI-Q081",
+    "number": 81,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "What is weather?",
+    "answer": "Weather is the condition of the atmosphere at a place over a short period."
+  },
+  {
+    "id": "P4-SCI-Q082",
+    "number": 82,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "Mention four elements of weather.",
+    "answer": "Temperature, rainfall, wind and cloud cover."
+  },
+  {
+    "id": "P4-SCI-Q083",
+    "number": 83,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "How can weather affect people's daily activities?",
+    "answer": "Weather affects farming, clothing, travel, drying clothes and outdoor activities."
+  },
+  {
+    "id": "P4-SCI-Q084",
+    "number": 84,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "Why is weather observation useful?",
+    "answer": "It helps people plan activities and farmers plan farm work."
+  },
+  {
+    "id": "P4-SCI-Q085",
+    "number": 85,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "What is a change in weather?",
+    "answer": "A change in weather is a difference in conditions such as temperature, wind, cloud cover or rainfall."
+  },
+  {
+    "id": "P4-SCI-Q086",
+    "number": 86,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "Mention signs that weather is changing.",
+    "answer": "Clouds gathering, wind increasing, temperature changing or rain beginning."
+  },
+  {
+    "id": "P4-SCI-Q087",
+    "number": 87,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "Why can the weather change during the day?",
+    "answer": "Sunlight, wind, cloud cover and changes in the atmosphere can cause weather conditions to change."
+  },
+  {
+    "id": "P4-SCI-Q088",
+    "number": 88,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "How can sudden weather changes affect farmers?",
+    "answer": "It may delay planting or harvesting, damage crops or cause flooding and soil erosion."
+  },
+  {
+    "id": "P4-SCI-Q089",
+    "number": 89,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "What is the water cycle?",
+    "answer": "The water cycle is the continuous movement of water between the land, water bodies and the atmosphere."
+  },
+  {
+    "id": "P4-SCI-Q090",
+    "number": 90,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "Name the main stages of the water cycle.",
+    "answer": "Evaporation, condensation and precipitation (rainfall)."
+  },
+  {
+    "id": "P4-SCI-Q091",
+    "number": 91,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "What causes water to evaporate?",
+    "answer": "Heat from the Sun causes liquid water to change into water vapour."
+  },
+  {
+    "id": "P4-SCI-Q092",
+    "number": 92,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "How does rainfall return water to the land?",
+    "answer": "Water droplets in clouds join and fall to the ground as rain."
+  },
+  {
+    "id": "P4-SCI-Q093",
+    "number": 93,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "What is rainfall?",
+    "answer": "Rainfall is water falling from clouds to the ground in drops."
+  },
+  {
+    "id": "P4-SCI-Q094",
+    "number": 94,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "Name two forms in which water may fall from clouds.",
+    "answer": "Rain and hail; in some places, snow also falls."
+  },
+  {
+    "id": "P4-SCI-Q095",
+    "number": 95,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "How is rainfall measured?",
+    "answer": "Rainfall is measured using a rain gauge, usually in millimetres."
+  },
+  {
+    "id": "P4-SCI-Q096",
+    "number": 96,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "Why is rainfall important to crops?",
+    "answer": "Rain supplies water needed for crop growth."
+  },
+  {
+    "id": "P4-SCI-Q097",
+    "number": 97,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "What is a rain gauge?",
+    "answer": "A rain gauge is an instrument used to collect and measure rainfall."
+  },
+  {
+    "id": "P4-SCI-Q098",
+    "number": 98,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "What does a rain gauge measure?",
+    "answer": "It measures the amount of rainfall."
+  },
+  {
+    "id": "P4-SCI-Q099",
+    "number": 99,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "Where should a rain gauge be placed for useful readings?",
+    "answer": "Place it in an open area away from trees and buildings, where it can collect rain without obstruction."
+  },
+  {
+    "id": "P4-SCI-Q100",
+    "number": 100,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "Why should the reading of a rain gauge be recorded regularly?",
+    "answer": "Regular records help show how much rain has fallen and how rainfall changes over time."
+  },
+  {
+    "id": "P4-SCI-Q101",
+    "number": 101,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "What is a weather chart?",
+    "answer": "A weather chart is a table or chart used to record weather observations."
+  },
+  {
+    "id": "P4-SCI-Q102",
+    "number": 102,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "What information can be shown on a simple weather chart?",
+    "answer": "It may show rainfall, temperature, wind, cloud cover and the daily weather condition."
+  },
+  {
+    "id": "P4-SCI-Q103",
+    "number": 103,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "Why do learners record weather observations?",
+    "answer": "Records help learners compare weather conditions and identify changes over time."
+  },
+  {
+    "id": "P4-SCI-Q104",
+    "number": 104,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "How can a weather chart help a farmer?",
+    "answer": "It helps a farmer plan planting, watering, spraying and harvesting."
+  },
+  {
+    "id": "P4-SCI-Q105",
+    "number": 105,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "Why is sunshine important?",
+    "answer": "Sunshine provides light and warmth needed by plants and helps people dry clothes and crops."
+  },
+  {
+    "id": "P4-SCI-Q106",
+    "number": 106,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "How can sunshine affect drying?",
+    "answer": "Sunshine provides heat that helps water evaporate and wet materials dry."
+  },
+  {
+    "id": "P4-SCI-Q107",
+    "number": 107,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "How can too much sunshine affect crops?",
+    "answer": "Too much sunshine can dry the soil and cause plants to wilt."
+  },
+  {
+    "id": "P4-SCI-Q108",
+    "number": 108,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "What instrument or method can be used to observe sunshine in simple weather work?",
+    "answer": "Observe and record the hours or periods of sunshine; a sunshine recorder may be used where available."
+  },
+  {
+    "id": "P4-SCI-Q109",
+    "number": 109,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "What is wind?",
+    "answer": "Wind is moving air."
+  },
+  {
+    "id": "P4-SCI-Q110",
+    "number": 110,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "How can wind be observed?",
+    "answer": "Observe the movement of leaves, flags or smoke, or use a wind vane to observe direction."
+  },
+  {
+    "id": "P4-SCI-Q111",
+    "number": 111,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "Mention two effects of strong winds.",
+    "answer": "Strong winds can damage buildings and crops and blow down trees."
+  },
+  {
+    "id": "P4-SCI-Q112",
+    "number": 112,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "Why can wind be useful to people?",
+    "answer": "Wind can help dry clothes and crops, move sailing boats and turn windmills or turbines."
+  },
+  {
+    "id": "P4-SCI-Q113",
+    "number": 113,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "What are clouds?",
+    "answer": "Clouds are collections of tiny water droplets or ice crystals in the atmosphere."
+  },
+  {
+    "id": "P4-SCI-Q114",
+    "number": 114,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "How can clouds give clues about coming rain?",
+    "answer": "Dark, thick clouds may indicate that rain is likely."
+  },
+  {
+    "id": "P4-SCI-Q115",
+    "number": 115,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "Why do clouds form?",
+    "answer": "Clouds form when moist air cools and water vapour condenses into tiny droplets or ice crystals."
+  },
+  {
+    "id": "P4-SCI-Q116",
+    "number": 116,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "Why are clouds important in the water cycle?",
+    "answer": "Clouds hold condensed water that may later fall as precipitation."
+  },
+  {
+    "id": "P4-SCI-Q117",
+    "number": 117,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "How can people keep safe during heavy rain or strong winds?",
+    "answer": "Stay indoors or in a safe building, avoid flooded places and do not shelter under isolated trees during storms."
+  },
+  {
+    "id": "P4-SCI-Q118",
+    "number": 118,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "What should a farmer consider before spraying crops?",
+    "answer": "The farmer should consider wind direction and speed, expected rain and the safety instructions for the product."
+  },
+  {
+    "id": "P4-SCI-Q119",
+    "number": 119,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "Why should children avoid playing in flooded areas?",
+    "answer": "Floodwater may be deep, fast-moving or contaminated and can cause drowning or disease."
+  },
+  {
+    "id": "P4-SCI-Q120",
+    "number": 120,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Weather Changes Around Us",
+    "question": "How can weather information help people plan activities?",
+    "answer": "Weather information helps people choose suitable times for farming, travelling, drying produce and other activities."
+  },
+  {
+    "id": "P4-SCI-Q121",
+    "number": 121,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "What is personal hygiene?",
+    "answer": "Personal hygiene is the practice of keeping the body and personal belongings clean to maintain health."
+  },
+  {
+    "id": "P4-SCI-Q122",
+    "number": 122,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Mention five personal hygiene practices.",
+    "answer": "Examples include bathing, brushing teeth, washing hands, trimming nails and wearing clean clothes."
+  },
+  {
+    "id": "P4-SCI-Q123",
+    "number": 123,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Why is personal hygiene important?",
+    "answer": "It helps prevent diseases, removes dirt and body odour, and keeps a person healthy."
+  },
+  {
+    "id": "P4-SCI-Q124",
+    "number": 124,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "How can poor hygiene affect a learner?",
+    "answer": "A learner may get infections, feel uncomfortable, smell bad or be teased by others."
+  },
+  {
+    "id": "P4-SCI-Q125",
+    "number": 125,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "How should a person keep the body clean?",
+    "answer": "Bathe regularly with clean water and soap, and wash the body properly."
+  },
+  {
+    "id": "P4-SCI-Q126",
+    "number": 126,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Why should the body be washed regularly?",
+    "answer": "Washing removes sweat, dirt and germs from the skin."
+  },
+  {
+    "id": "P4-SCI-Q127",
+    "number": 127,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Why should the hair be kept clean?",
+    "answer": "Clean hair helps prevent dirt, bad smell and some scalp problems."
+  },
+  {
+    "id": "P4-SCI-Q128",
+    "number": 128,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "What can happen when the body is not kept clean?",
+    "answer": "The person may develop body odour, skin problems or infections."
+  },
+  {
+    "id": "P4-SCI-Q129",
+    "number": 129,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Why should we bathe regularly?",
+    "answer": "Regular bathing removes sweat, dirt and germs and helps keep the skin healthy."
+  },
+  {
+    "id": "P4-SCI-Q130",
+    "number": 130,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "What can be used for bathing?",
+    "answer": "Clean water, soap, a washcloth or sponge, and a clean towel may be used."
+  },
+  {
+    "id": "P4-SCI-Q131",
+    "number": 131,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Why should a clean towel be used?",
+    "answer": "A clean towel helps avoid transferring dirt and germs back to the body."
+  },
+  {
+    "id": "P4-SCI-Q132",
+    "number": 132,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "How does bathing help prevent body odour?",
+    "answer": "Bathing washes away sweat and bacteria that can cause body odour."
+  },
+  {
+    "id": "P4-SCI-Q133",
+    "number": 133,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Why should teeth be cleaned every day?",
+    "answer": "Cleaning teeth removes food particles and plaque and helps prevent tooth decay and bad breath."
+  },
+  {
+    "id": "P4-SCI-Q134",
+    "number": 134,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "What should be used to clean teeth?",
+    "answer": "A toothbrush and toothpaste, or another safe recommended tooth-cleaning method, should be used."
+  },
+  {
+    "id": "P4-SCI-Q135",
+    "number": 135,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "How can dirty teeth cause problems?",
+    "answer": "Dirty teeth can develop tooth decay, gum disease and bad breath."
+  },
+  {
+    "id": "P4-SCI-Q136",
+    "number": 136,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Why should sugary foods be taken in moderation?",
+    "answer": "Too much sugar encourages tooth decay and may contribute to poor health."
+  },
+  {
+    "id": "P4-SCI-Q137",
+    "number": 137,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "When should hands be washed?",
+    "answer": "Wash hands before preparing or eating food, after using the toilet, after handling waste, and after touching dirty things or animals."
+  },
+  {
+    "id": "P4-SCI-Q138",
+    "number": 138,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Why should hands be washed before eating?",
+    "answer": "Handwashing removes germs that could enter the mouth with food."
+  },
+  {
+    "id": "P4-SCI-Q139",
+    "number": 139,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Why should hands be washed after using a toilet?",
+    "answer": "It removes germs from the hands and helps prevent the spread of intestinal diseases."
+  },
+  {
+    "id": "P4-SCI-Q140",
+    "number": 140,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "How does handwashing help prevent disease?",
+    "answer": "It removes germs from the hands before they can enter the body or spread to other people and surfaces."
+  },
+  {
+    "id": "P4-SCI-Q141",
+    "number": 141,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Why should clothes be kept clean?",
+    "answer": "Clean clothes remove dirt and sweat, help prevent skin problems and make a person comfortable."
+  },
+  {
+    "id": "P4-SCI-Q142",
+    "number": 142,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "How should dirty clothes be handled?",
+    "answer": "Keep dirty clothes separate from clean clothes and wash them with soap and clean water."
+  },
+  {
+    "id": "P4-SCI-Q143",
+    "number": 143,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Why should clothes be dried properly after washing?",
+    "answer": "Proper drying helps prevent dampness, unpleasant smells and the growth of some fungi."
+  },
+  {
+    "id": "P4-SCI-Q144",
+    "number": 144,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "What problems may result from wearing dirty clothes?",
+    "answer": "They may cause body odour, skin irritation or infections and attract pests."
+  },
+  {
+    "id": "P4-SCI-Q145",
+    "number": 145,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Why should bedding be washed and aired?",
+    "answer": "Washing and airing bedding removes dirt, sweat and some germs and helps keep it fresh."
+  },
+  {
+    "id": "P4-SCI-Q146",
+    "number": 146,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Mention examples of bedding.",
+    "answer": "Examples are bedsheets, blankets, pillowcases, pillows and mattresses."
+  },
+  {
+    "id": "P4-SCI-Q147",
+    "number": 147,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "How can dirty bedding affect health?",
+    "answer": "Dirty bedding may contribute to skin irritation, unpleasant smells and the spread of some infections or pests."
+  },
+  {
+    "id": "P4-SCI-Q148",
+    "number": 148,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Why is sunlight useful when airing bedding?",
+    "answer": "Sunlight helps dry bedding and may reduce some germs and dampness."
+  },
+  {
+    "id": "P4-SCI-Q149",
+    "number": 149,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Why should people avoid sharing personal items such as toothbrushes?",
+    "answer": "Sharing them can transfer germs, lice or other infections from one person to another."
+  },
+  {
+    "id": "P4-SCI-Q150",
+    "number": 150,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Name two personal items that should not be shared.",
+    "answer": "Examples are toothbrushes and towels. Combs and razors should also not be shared."
+  },
+  {
+    "id": "P4-SCI-Q151",
+    "number": 151,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "How should personal items be stored?",
+    "answer": "Keep personal items clean, dry and in a clean, separate place."
+  },
+  {
+    "id": "P4-SCI-Q152",
+    "number": 152,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Why should combs and towels be kept clean?",
+    "answer": "They can collect dirt and germs and transfer them to the body or hair."
+  },
+  {
+    "id": "P4-SCI-Q153",
+    "number": 153,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "How can poor hygiene spread disease?",
+    "answer": "Germs can pass through dirty hands, contaminated food or water, dirty clothing and unclean surroundings."
+  },
+  {
+    "id": "P4-SCI-Q154",
+    "number": 154,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Mention two diseases associated with poor hygiene.",
+    "answer": "Examples include diarrhoea and some skin infections. Poor hygiene can also help spread intestinal worms."
+  },
+  {
+    "id": "P4-SCI-Q155",
+    "number": 155,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "How can good hygiene reduce disease?",
+    "answer": "Good hygiene removes or reduces germs and lowers the chance of infection."
+  },
+  {
+    "id": "P4-SCI-Q156",
+    "number": 156,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Why is cleanliness important at school?",
+    "answer": "It helps learners stay healthy, prevents the spread of disease and creates a pleasant place for learning."
+  },
+  {
+    "id": "P4-SCI-Q157",
+    "number": 157,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Describe a simple daily hygiene routine for a learner.",
+    "answer": "A learner can bathe, brush the teeth, wash hands with soap, wear clean clothes, trim nails and keep personal items clean."
+  },
+  {
+    "id": "P4-SCI-Q158",
+    "number": 158,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Why should nails be trimmed?",
+    "answer": "Short nails collect less dirt and are easier to clean, reducing the spread of germs."
+  },
+  {
+    "id": "P4-SCI-Q159",
+    "number": 159,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "Why should shoes and socks be kept clean?",
+    "answer": "Clean shoes and socks help reduce bad smells and may prevent some foot problems."
+  },
+  {
+    "id": "P4-SCI-Q160",
+    "number": 160,
+    "grade": "Primary 4",
+    "subject": "Science",
+    "topic": "Personal Hygiene",
+    "question": "How can a learner encourage good hygiene at home?",
+    "answer": "A learner can practise good hygiene, explain its benefits, remind family members kindly and help keep shared areas clean."
+  }
+]</script>
+  <script>
+    (() => {
+      'use strict';
+      const QUESTIONS = JSON.parse(document.getElementById('question-bank').textContent);
+      const DAILY_TARGET = 20; // Prototype default. The connected admin assignment will supply this per student.
+      const STORAGE_KEY = 'daily-science-guided-revision-v1';
+      const today = () => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      };
+      const prettyDate = (iso) => {
+        if (!iso) return '';
+        const [y,m,d] = iso.split('-').map(Number);
+        return new Date(y, m-1, d).toLocaleDateString('en-UG', {day:'numeric', month:'short', year:'numeric'});
+      };
+      const newSet = (startIndex, setNumber, assignedOn) => ({
+        version: 1,
+        target: DAILY_TARGET,
+        startIndex,
+        setNumber,
+        assignedOn,
+        assignedCount: Math.min(DAILY_TARGET, Math.max(0, QUESTIONS.length - startIndex)),
+        completedIds: [],
+        cursor: 0,
+        status: 'active'
+      });
+      const readSaved = () => {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return null;
+          const value = JSON.parse(raw);
+          if (value.version !== 1 || !Number.isInteger(value.startIndex) || !Array.isArray(value.completedIds)) return null;
+          return value;
+        } catch (_) { return null; }
+      };
+      let persistenceWorks = true;
+      try {
+        localStorage.setItem(`${STORAGE_KEY}-test`, 'ok');
+        localStorage.removeItem(`${STORAGE_KEY}-test`);
+      } catch (_) { persistenceWorks = false; }
+      let state = readSaved();
+      let bankExhausted = false;
+      if (!state) {
+        state = newSet(0, 1, today());
+      } else if (state.status === 'complete' && state.assignedOn < today()) {
+        const nextStart = state.startIndex + state.assignedCount;
+        if (nextStart >= QUESTIONS.length) {
+          bankExhausted = true;
+          state.status = 'exhausted';
+        } else {
+          state = newSet(nextStart, state.setNumber + 1, today());
+        }
+      } else if (state.status === 'exhausted') {
+        bankExhausted = true;
+      }
+      if (!Number.isInteger(state.assignedCount) || state.assignedCount <= 0) {
+        bankExhausted = true;
+        state.status = 'exhausted';
+      }
+      const save = () => {
+        if (!persistenceWorks) return;
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+        catch (_) { persistenceWorks = false; }
+        updateStorageStatus();
+      };
+      const qById = new Map(QUESTIONS.map(q => [q.id, q]));
+      const assignedQuestions = QUESTIONS.slice(state.startIndex, state.startIndex + state.assignedCount);
+      const doneSet = () => new Set(state.completedIds);
+      const countDone = () => state.completedIds.length;
+      const isDone = (q) => doneSet().has(q.id);
+      const $ = (id) => document.getElementById(id);
+      const topicIcon = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 13V7M8 8c-2.9 0-4.4-1.5-4.5-4 2.7-.1 4.3 1.2 4.5 4Zm0 2c.1-2.6 1.7-4.1 4.5-4.2-.1 2.7-1.6 4.2-4.5 4.2Z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      function updateStorageStatus() {
+        const el = $('storage-status');
+        el.textContent = persistenceWorks ? 'Preview progress is saved on this device.' : 'Preview progress lasts only while this page stays open.';
+      }
+      function setProgressUI() {
+        const finished = countDone();
+        const total = state.assignedCount;
+        $('position-number').textContent = String(Math.min(state.cursor + 1, total)).padStart(2, '0');
+        $('position-total').textContent = `/ ${total}`;
+        $('completed-count').textContent = `${finished} of ${total} studied`;
+        $('progress-fill').style.width = `${total ? Math.min(100, finished / total * 100) : 0}%`;
+        $('progress-track').setAttribute('aria-valuemax', String(total));
+        $('progress-track').setAttribute('aria-valuenow', String(finished));
+        $('target-value').textContent = String(state.target);
+        $('side-target').textContent = `${state.target} questions`;
+        $('bank-total').textContent = String(QUESTIONS.length);
+        $('assignment-meta').textContent = `Set ${state.setNumber} · ${prettyDate(state.assignedOn)}`;
+      }
+      function findNextUnfinished(afterIndex) {
+        const done = doneSet();
+        for (let i = afterIndex + 1; i < assignedQuestions.length; i++) if (!done.has(assignedQuestions[i].id)) return i;
+        for (let i = 0; i < afterIndex; i++) if (!done.has(assignedQuestions[i].id)) return i;
+        return -1;
+      }
+      function renderQuestion() {
+        const q = assignedQuestions[state.cursor];
+        if (!q) { renderEmpty(); return; }
+        $('study-content').hidden = false;
+        $('complete-content').hidden = true;
+        $('progress-section').hidden = false;
+        $('carryover').hidden = !(state.status === 'active' && state.assignedOn < today());
+        if (!$('carryover').hidden) {
+          $('carryover').textContent = `This set began on ${prettyDate(state.assignedOn)} and is still in progress. Finish it before a new daily set is issued.`;
+        }
+        setProgressUI();
+        $('topic-tag').innerHTML = `${topicIcon}<span>${q.topic}</span>`;
+        $('question-text').textContent = q.question;
+        $('answer-text').textContent = q.answer;
+        const prev = $('previous-button');
+        prev.disabled = state.cursor === 0;
+        const done = isDone(q);
+        const primaryLabel = $('primary-label');
+        if (done) {
+          primaryLabel.textContent = state.cursor === assignedQuestions.length - 1 ? 'Finish study set' : 'Next question';
+          $('action-hint').textContent = 'This item is already counted in your progress.';
+        } else {
+          primaryLabel.textContent = state.cursor === assignedQuestions.length - 1 ? 'Mark studied & finish set' : 'Mark studied & continue';
+          $('action-hint').textContent = 'Read the question and its answer, then mark it studied.';
+        }
+      }
+      function renderComplete() {
+        $('study-content').hidden = true;
+        $('complete-content').hidden = false;
+        $('progress-section').hidden = false;
+        $('carryover').hidden = true;
+        setProgressUI();
+        const total = state.assignedCount;
+        $('complete-content').innerHTML = `<div class="complete-wrap"><div class="complete-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="m8 16.5 5.1 5L24.5 10" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div><p class="eyebrow">DAILY SET COMPLETE</p><h2>${total} questions studied.</h2><p class="complete-text">You have finished every question in this set. Your progress is recorded in this prototype. The next set stays paused until the next scheduled day.</p><div class="complete-score"><strong>${total}</strong><span>/ ${total} completed</span></div><p class="complete-small">Nice work—steady revision adds up.</p></div>`;
+      }
+      function renderEmpty() {
+        $('study-content').hidden = true;
+        $('complete-content').hidden = false;
+        $('progress-section').hidden = true;
+        $('carryover').hidden = true;
+        $('assignment-meta').textContent = 'Question bank complete';
+        $('complete-content').innerHTML = `<div class="empty-wrap"><div class="complete-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M7 9h18M7 16h18M7 23h11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div><p class="eyebrow">NO MORE QUESTIONS AVAILABLE</p><h2>You've reached the end of this guide.</h2><p>All ${QUESTIONS.length} questions in the current bank have been studied. As requested, new sets are paused rather than repeating these questions. An admin can add more question-and-answer material to continue.</p><span class="bank-count">${QUESTIONS.length} questions completed in this guide</span></div>`;
+      }
+      function render() {
+        updateStorageStatus();
+        if (bankExhausted || state.status === 'exhausted') { renderEmpty(); return; }
+        if (state.status === 'complete') { renderComplete(); return; }
+        renderQuestion();
+      }
+      function advance() {
+        if (state.status !== 'active') return;
+        const q = assignedQuestions[state.cursor];
+        if (!q) return;
+        if (!isDone(q)) state.completedIds.push(q.id);
+        if (countDone() >= state.assignedCount) {
+          state.status = 'complete';
+          state.completedAt = new Date().toISOString();
+          save();
+          render();
+          return;
+        }
+        const next = findNextUnfinished(state.cursor);
+        if (next >= 0) state.cursor = next;
+        save();
+        render();
+      }
+      $('primary-button').addEventListener('click', advance);
+      $('previous-button').addEventListener('click', () => {
+        if (state.cursor > 0) { state.cursor -= 1; render(); }
+      });
+      $('reset-button').addEventListener('click', () => {
+        const ok = window.confirm('Reset this browser preview to question 1? This only clears local demo progress.');
+        if (!ok) return;
+        state = newSet(0, 1, today());
+        bankExhausted = false;
+        save();
+        render();
+      });
+      window.addEventListener('keydown', (event) => {
+        if ((event.key === 'Enter' || event.key === ' ') && document.activeElement === $('primary-button')) {
+          event.preventDefault(); advance();
+        }
+      });
+      render();
+    })();
+  </script>
+</body>
+</html>
