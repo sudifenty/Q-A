@@ -1,8 +1,61 @@
--- Daily Q&A revision: additive tables/functions for the separate learner app.
--- Run after the main SmartPle schema in the EXISTING shared Supabase project.
--- This does not alter the existing questions/attempts tables.
+-- Standalone Daily Q&A schema for its own Supabase project.
+-- Run this migration before seed_daily_qa.sql. It does not depend on the SmartPle admin schema.
 
 create extension if not exists pgcrypto;
+
+-- Standalone identity/profile table. Auth users are students by default; admin roles
+-- must be assigned manually by the project owner in the Supabase SQL Editor.
+create table if not exists public.daily_qa_profiles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  display_name text not null default 'Student',
+  class text,
+  role text not null default 'student' check (role in ('student','admin')),
+  created_at timestamptz not null default now()
+);
+
+-- Create a least-privilege student profile whenever a new Auth user is created.
+create or replace function public.daily_qa_handle_new_user()
+returns trigger
+language plpgsql security definer
+set search_path = public
+as $$
+begin
+  insert into public.daily_qa_profiles (user_id, display_name, class, role)
+  values (
+    new.id,
+    coalesce(
+      nullif(new.raw_user_meta_data ->> 'display_name', ''),
+      nullif(new.raw_user_meta_data ->> 'full_name', ''),
+      nullif(split_part(coalesce(new.email, ''), '@', 1), ''),
+      'Student'
+    ),
+    nullif(new.raw_user_meta_data ->> 'class', ''),
+    'student'
+  )
+  on conflict (user_id) do nothing;
+  return new;
+end;
+$$;
+revoke all on function public.daily_qa_handle_new_user() from public, anon, authenticated;
+drop trigger if exists daily_qa_auth_user_created on auth.users;
+create trigger daily_qa_auth_user_created
+  after insert on auth.users
+  for each row execute function public.daily_qa_handle_new_user();
+
+-- Backfill Auth users that existed before this migration; never overwrite an assigned role.
+insert into public.daily_qa_profiles (user_id, display_name, class, role)
+select
+  u.id,
+  coalesce(
+    nullif(u.raw_user_meta_data ->> 'display_name', ''),
+    nullif(u.raw_user_meta_data ->> 'full_name', ''),
+    nullif(split_part(coalesce(u.email, ''), '@', 1), ''),
+    'Student'
+  ),
+  nullif(u.raw_user_meta_data ->> 'class', ''),
+  'student'
+from auth.users u
+on conflict (user_id) do nothing;
 
 -- Q&A records imported from the guide. Question text and answer are displayed together.
 create table if not exists public.daily_qa_questions (
@@ -65,19 +118,26 @@ create table if not exists public.daily_qa_assignment_items (
 create index if not exists daily_qa_items_assignment_idx
   on public.daily_qa_assignment_items (assignment_id, position);
 
--- Admin gate uses the same profile role as the existing admin dashboard.
+-- Only this project's assigned admins can manage settings or read all student progress.
 create or replace function public.daily_qa_is_admin()
 returns boolean
 language sql stable security definer
 set search_path = public
 as $$
   select exists (
-    select 1 from public.smartple_profiles
+    select 1 from public.daily_qa_profiles
     where user_id = auth.uid() and role = 'admin'
   );
 $$;
 revoke all on function public.daily_qa_is_admin() from public, anon;
 grant execute on function public.daily_qa_is_admin() to authenticated;
+
+alter table public.daily_qa_profiles enable row level security;
+revoke all on public.daily_qa_profiles from anon, authenticated;
+grant select on public.daily_qa_profiles to authenticated;
+drop policy if exists daily_qa_profiles_self_or_admin_read on public.daily_qa_profiles;
+create policy daily_qa_profiles_self_or_admin_read on public.daily_qa_profiles
+  for select to authenticated using (user_id = auth.uid() or public.daily_qa_is_admin());
 
 alter table public.daily_qa_questions enable row level security;
 alter table public.daily_qa_settings enable row level security;
@@ -353,5 +413,9 @@ revoke all on function public.daily_qa_complete_item(uuid, text) from public, an
 grant execute on function public.daily_qa_get_or_start_set() to authenticated;
 grant execute on function public.daily_qa_complete_item(uuid, text) to authenticated;
 
--- Basic verification after applying both SQL files:
--- select grade, subject, count(*) from public.daily_qa_questions group by grade, subject;
+-- Bootstrap the administrator after creating that user in Supabase Auth. Replace the email:
+-- update public.daily_qa_profiles
+-- set role = 'admin'
+-- where user_id = (select id from auth.users where email = 'admin@example.com');
+-- Verify: select user_id, display_name, class, role from public.daily_qa_profiles;
+-- Verify bank: select grade, subject, count(*) from public.daily_qa_questions group by grade, subject;

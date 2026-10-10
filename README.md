@@ -1,42 +1,54 @@
-# SmartPle Daily Q&A
+# Daily Q&A — standalone guided revision
 
-A single-file browser app for guided revision. Students see one question at a time with its answer immediately below it, then mark it studied to continue. The same app includes Daily Q&A admin controls for setting targets and enabling or pausing assignments.
+This repository contains an independent one-file browser app. It does **not** require the SmartPle admin dashboard. The app has student and Daily Q&A admin screens of its own, and uses a dedicated Supabase project for sign-in, assignment settings, and progress.
 
-## Repository layout
+## Files
 
 ```text
 README.md
-index.html                  Complete student + Daily Q&A admin app
+index.html                  Student + Daily Q&A admin app (all-in-one)
 supabase/
-  daily_qa.sql               Database migration; run first
-  seed_daily_qa.sql          Imports the 160 supplied Primary 4 Science items; run second
+  daily_qa.sql               Schema, role setup, RLS, and RPCs
+  seed_daily_qa.sql          160 Primary 4 Science question-and-answer items
 ```
 
-There is no build step or JavaScript package installation. The question bank, app logic, styling, and copyable SQL are embedded in `index.html`.
+No build system, npm install, or external JavaScript library is required. The question bank and app logic are embedded in `index.html`. The UI uses a child-friendly cream, yellow, blue, and green theme with a Nunito font link; the hosted page needs network access to load Nunito from Google Fonts.
 
-## Preview
+## 1. Create a dedicated Supabase project
 
-Open `index.html` in a browser and choose a demo preview. Demo mode stores its sample progress in that browser only; it does not connect to Supabase.
+Use a new project for Q-A. This setup creates its own `daily_qa_profiles` table and does not read `smartple_profiles`. Auth users in this project are students by default. Admin roles are assigned by the project owner in SQL Editor; users cannot assign themselves admin access.
 
-For live use, host the root `index.html` on an HTTPS site (GitHub Pages is suitable), then use **Connection / SQL** in the app to enter the existing Supabase project URL and publishable/anon key. Sign in with an existing account. Never place a Supabase service-role key in this client-side app.
+## 2. Set up the database and first admin
 
-## Supabase setup
+In the new project's Supabase SQL Editor, run these files in order:
 
-In the SQL Editor for the same Supabase project used by SmartPle:
+1. `supabase/daily_qa.sql`
+2. `supabase/seed_daily_qa.sql`
 
-1. Run `supabase/daily_qa.sql`.
-2. Run `supabase/seed_daily_qa.sql`.
-3. Verify the existing `smartple_profiles` table has `user_id` and `role` columns and that the administrator account has `role = 'admin'`.
+Then create an Auth user for the administrator in **Authentication → Users**. Promote that account in SQL Editor, replacing the email with the admin's exact email:
 
-The migration and seed script are also available to copy inside the app's **Connection / SQL** section. These SQL files have not been applied to any live database by this repository package.
+```sql
+update public.daily_qa_profiles
+set role = 'admin'
+where user_id = (select id from auth.users where email = 'admin@example.com');
+```
 
-## Guided-revision behavior
+Create student accounts in the same project's **Authentication → Users**. New accounts receive the `student` role automatically. To confirm profiles and the seeded bank:
 
-- Shows each question with its answer; there is no quiz input or automatic grading.
-- Tracks each question marked studied and shows progress toward the configured target (20 by default).
-- Does not stack a new set while the current set is unfinished, and does not repeat a student's assigned questions when the bank is exhausted.
-- The admin can set the daily target and enable or pause assignments.
+```sql
+select user_id, display_name, class, role from public.daily_qa_profiles;
+select grade, subject, count(*) from public.daily_qa_questions group by grade, subject;
+```
 
-## Deploy on GitHub Pages
+## 3. Run the app
 
-In the GitHub repository, open **Settings → Pages**, choose **Deploy from a branch**, select `main` and the `/ (root)` folder, then save. The root `index.html` is the site entry point. Allow a short time for Pages to publish it.
+Open `index.html` in a browser and choose a demo preview to test locally; demo data stays in that browser and does not use Supabase. For live use, host the root `index.html` on an HTTPS site (GitHub Pages is suitable). In **Connection / SQL**, enter the new project's URL and publishable/anon key, then sign in with one of the Auth accounts. **Never put a service-role key in this file.**
+
+## Behavior
+
+- The learner starts with one large START button, then sees one question with its answer directly below. NEXT marks the item studied and advances; there are no A–D options or correctness scores.
+- Records each studied question and progress toward the admin-set target (20 by default).
+- Resumes unfinished sets, avoids stacking a new set while one is active, and does not repeat a student's assigned questions when the bank is exhausted.
+- Admins can set a student's target and enable or pause their plan.
+
+The SQL is designed for this standalone project and has not yet been applied to a live Supabase database.
