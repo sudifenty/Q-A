@@ -1,5 +1,6 @@
 -- Read-only post-setup checks for Q-A tables in the existing SmartPle project.
--- Run after setup_shared_project.sql, then authorize_qa_admin.sql, in that order.
+-- Run after setup_shared_project.sql (or assign_student_sets.sql on an existing install),
+-- then authorize_qa_admin.sql and secure_smartple_profiles.sql.
 -- This script does not modify data.
 
 do $$
@@ -165,6 +166,12 @@ begin
     end if;
   end loop;
 
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='daily_qa_assignments' and column_name='assignment_type')
+     or not exists (select 1 from information_schema.columns where table_schema='public' and table_name='daily_qa_assignments' and column_name='source_assignment_id')
+     or not exists (select 1 from information_schema.columns where table_schema='public' and table_name='daily_qa_assignments' and column_name='assigned_by') then
+    raise exception 'Missing admin-assigned set metadata. Apply assign_student_sets.sql on an existing installation.';
+  end if;
+
   select count(*) into v_p4 from public.daily_qa_questions where grade = 'P4' and subject = 'Science' and is_active;
   select count(*) into v_p5 from public.daily_qa_questions where grade = 'P5' and subject = 'Science' and is_active;
   select count(*) into v_p6 from public.daily_qa_questions where grade = 'P6' and subject = 'Science' and is_active;
@@ -188,10 +195,13 @@ begin
   if to_regprocedure('public.daily_qa_get_or_start_set()') is null then
     raise exception 'Missing RPC public.daily_qa_get_or_start_set().';
   end if;
+  if to_regprocedure('public.daily_qa_admin_assign_set(uuid,uuid)') is null then
+    raise exception 'Missing admin-only set assignment RPC public.daily_qa_admin_assign_set(uuid,uuid).';
+  end if;
   if to_regprocedure('public.daily_qa_complete_item(uuid,text)') is null then
     raise exception 'Missing RPC public.daily_qa_complete_item(uuid,text).';
   end if;
 
-  raise notice 'Q-A checks passed: P4 %, P5 %, P6 %, P7 % active Science questions (% total); shared profiles/admin allowlist found; smartple_profiles RLS is scoped; anon profile access is blocked; RLS/policies found for all seven Q-A data tables.', v_p4, v_p5, v_p6, v_p7, v_total;
+  raise notice 'Q-A checks passed: P4 %, P5 %, P6 %, P7 % active Science questions (% total); shared profiles/admin allowlist found; scoped smartple_profiles RLS; anon profile access blocked; RLS/policies and admin set-assignment RPC found.', v_p4, v_p5, v_p6, v_p7, v_total;
 end;
 $$;

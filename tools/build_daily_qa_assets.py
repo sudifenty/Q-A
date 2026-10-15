@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate the Q-A seed, combined setup SQL/copy panel, order CSV, and embedded HTML data.
+"""Regenerate the Q-A seed, setup SQL/copy panel, admin-assignment migration panel, order CSV, and embedded HTML data.
 
 Edit content/question_bank.json in its existing order, then run:
     python tools/build_daily_qa_assets.py
@@ -17,6 +17,8 @@ ROOT = Path(__file__).resolve().parents[1]
 BANK_PATH = ROOT / "content" / "question_bank.json"
 SEED_PATH = ROOT / "supabase" / "seed_daily_qa.sql"
 SCHEMA_PATH = ROOT / "supabase" / "daily_qa.sql"
+ASSIGNMENT_PATH = ROOT / "supabase" / "assign_student_sets.sql"
+ASSIGNMENT_COPY_PATH = ROOT / "supabase" / "assign_student_sets_copy.html"
 SETUP_PATH = ROOT / "supabase" / "setup_shared_project.sql"
 COPY_PANEL_PATH = ROOT / "supabase" / "setup_sql_copy.html"
 ORDER_PATH = ROOT / "content" / "question_order.csv"
@@ -145,7 +147,8 @@ textarea{display:block;width:100%;height:min(70vh,900px);min-height:460px;resize
 <header>
 <h1>Q-A — Supabase setup SQL</h1>
 <p>This is the full, additive schema-plus-seed script for the existing SmartPle student-app project: <strong>__LINE_COUNT__ lines, 660 questions</strong>.</p>
-<p>Run this file first. After it succeeds, run <code>authorize_qa_admin.sql</code>, then <code>secure_smartple_profiles.sql</code>, and finally <code>verify_daily_qa.sql</code>.</p>
+<p>For a fresh project, this includes the admin repeat/next-unused set feature. On an already-set-up project, do not rerun this full setup; run <code>assign_student_sets.sql</code> once to add that feature.</p>
+<p>Then run <code>authorize_qa_admin.sql</code> if needed, review/apply <code>secure_smartple_profiles.sql</code>, and finish with <code>verify_daily_qa.sql</code>.</p>
 </header>
 <div class="note"><strong>Before running:</strong> make sure Supabase is open to project <code>ftykmafgfyqvniacguyi</code>. The script checks for the expected <code>smartple_profiles</code> table/columns and stops if they are missing. This panel does not run SQL or contact Supabase.</div>
 <div class="toolbar">
@@ -175,6 +178,35 @@ document.getElementById('download').addEventListener('click',()=>{
             .replace("__ESCAPED_SQL__", html_escape(setup_sql, quote=False)))
 
 
+
+def build_assignment_copy_panel(sql_text: str) -> str:
+    # Visible, standalone Copy/Download panel for the existing-install migration.
+    template = r'''<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Q-A admin set assignment update SQL</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#18241d;background:#f4f7f4}*{box-sizing:border-box}body{margin:0;padding:20px}main{max-width:1100px;margin:0 auto;background:#fff;border:1px solid #dbe4dc;border-radius:16px;overflow:hidden;box-shadow:0 8px 28px #1a392414}header{padding:22px 24px;border-bottom:1px solid #e4ebe4}h1{margin:0 0 8px;font-size:22px}p{margin:6px 0;color:#526157;font-size:14px;line-height:1.5}.note{padding:13px 24px;background:#fff7df;border-bottom:1px solid #f0e3bd;color:#654d1a;font-size:13px;line-height:1.5}.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:14px 24px;border-bottom:1px solid #e4ebe4}button{display:inline-flex;align-items:center;gap:8px;border:1px solid #cfdacf;border-radius:9px;background:#fff;color:#1c3525;font:700 14px system-ui,sans-serif;padding:10px 14px;cursor:pointer}button.primary{background:#176b42;border-color:#176b42;color:#fff}#status{font-size:13px;color:#24633f;min-height:1.4em}textarea{display:block;width:100%;height:min(70vh,900px);min-height:460px;resize:vertical;border:0;background:#111a17;color:#e3f2e9;padding:20px 22px;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre;outline:none}footer{padding:12px 24px;color:#647166;font-size:12px}@media(max-width:600px){body{padding:8px}header{padding:18px}.note,.toolbar,footer{padding-left:18px;padding-right:18px}textarea{font-size:11px;height:68vh}}
+</style>
+</head>
+<body><main>
+<header><h1>Q-A — Admin set assignment update SQL</h1>
+<p>This idempotent additive migration adds the admin-only option to repeat a completed same-grade set or assign the next unused questions after a student finishes.</p>
+<p>Run it in the existing SmartPle project’s SQL Editor after the Q-A schema and admin authorization are in place. Fresh setup already includes this feature; no need to rerun the full setup.</p></header>
+<div class="note"><strong>Safe scope:</strong> this changes only Q-A assignment metadata and a guarded RPC. It does not change Auth accounts, profile rows, question content, or the existing daily target rules. A paused student must first be given a positive target.</div>
+<div class="toolbar"><button class="primary" id="copy" type="button">Copy SQL</button><button id="download" type="button">Download .sql</button><span id="status" role="status" aria-live="polite"></span></div>
+<textarea id="sql" readonly spellcheck="false" aria-label="Complete admin set assignment update SQL">__ESCAPED_SQL__</textarea>
+<footer>Tip: if clipboard access is blocked, click inside the SQL box, press Ctrl+A (or ⌘A), then Ctrl+C (or ⌘C).</footer>
+</main><script>
+const box=document.getElementById('sql'),status=document.getElementById('status');
+function say(text){status.textContent=text;}
+document.getElementById('copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(box.value);say('Copied. Paste the migration into Supabase SQL Editor.');}catch(_){box.focus();box.select();box.setSelectionRange(0,box.value.length);try{if(document.execCommand('copy'))say('Copied. Paste the migration into Supabase SQL Editor.');else say('SQL selected; press Ctrl+C or ⌘C to copy.');}catch(__){say('SQL selected; press Ctrl+C or ⌘C to copy.');}}});
+document.getElementById('download').addEventListener('click',()=>{const blob=new Blob([box.value],{type:'text/sql;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='assign_student_sets.sql';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);say('Download started.');});
+</script></body></html>'''
+    return template.replace("__ESCAPED_SQL__", html_escape(sql_text, quote=False))
+
+
 def embed_json(html: str, script_id: str, value: str | list[dict]) -> str:
     encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
     # Prevent question text from ever closing the surrounding script element.
@@ -191,11 +223,13 @@ def main() -> None:
     seed_sql = build_seed(items)
     SEED_PATH.write_text(seed_sql, encoding="utf-8")
     schema_sql = SCHEMA_PATH.read_text(encoding="utf-8")
+    assignment_sql = ASSIGNMENT_PATH.read_text(encoding="utf-8")
     setup_sql = (
         "-- COPY/PASTE THIS ENTIRE FILE into the SQL Editor of the existing SmartPle project.\n"
-        "-- It installs the additive Q-A schema and all 660 questions.\n"
+        "-- It installs the additive Q-A schema, admin repeat/next-unused set assignment, and all 660 questions.\n"
         "-- After it succeeds, run authorize_qa_admin.sql (it requires exactly one linked admin),\n"
         "-- then secure_smartple_profiles.sql, and finally verify_daily_qa.sql.\n"
+        "-- If the full setup already succeeded, do not rerun it for the assignment feature; run assign_student_sets.sql once.\n"
         "-- Never put a service-role key in the client.\n\n"
         + schema_sql.rstrip()
         + "\n\n-- Ordered P4-P7 Science Q&A seed (660 items).\n"
@@ -204,16 +238,19 @@ def main() -> None:
     )
     SETUP_PATH.write_text(setup_sql, encoding="utf-8")
     COPY_PANEL_PATH.write_text(build_sql_copy_panel(setup_sql), encoding="utf-8")
+    ASSIGNMENT_COPY_PATH.write_text(build_assignment_copy_panel(assignment_sql), encoding="utf-8")
     ORDER_PATH.write_text(build_order_csv(items), encoding="utf-8")
     html = HTML_PATH.read_text(encoding="utf-8")
     html = embed_json(html, "question-bank", items)
     html = embed_json(html, "schema-sql", schema_sql)
+    html = embed_json(html, "assignment-sql", assignment_sql)
     html = embed_json(html, "seed-sql", seed_sql)
     HTML_PATH.write_text(html, encoding="utf-8")
     print("Generated 660 ordered Q&A items:", dict(Counter(grade_code(item["grade"]) for item in items)))
     print(f"Wrote {SEED_PATH.relative_to(ROOT)}")
     print(f"Wrote {SETUP_PATH.relative_to(ROOT)} (schema + seed, ready to copy/paste)")
-    print(f"Wrote {COPY_PANEL_PATH.relative_to(ROOT)} (visible SQL with Copy and Download controls)")
+    print(f"Wrote {COPY_PANEL_PATH.relative_to(ROOT)} (visible setup SQL with Copy and Download controls)")
+    print(f"Wrote {ASSIGNMENT_COPY_PATH.relative_to(ROOT)} (visible existing-install migration with Copy and Download controls)")
     print(f"Wrote {ORDER_PATH.relative_to(ROOT)} (questions only; no answers)")
     print("Synchronized embedded question bank and SQL in index.html")
 

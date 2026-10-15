@@ -15,12 +15,14 @@ supabase/setup_shared_project.sql Paste-ready schema plus all 660 questions for 
 supabase/setup_sql_copy.html     Visible SQL panel with copy/download controls
 supabase/secure_smartple_profiles.sql Restricts shared profile access while preserving student/admin reads
 supabase/secure_profiles_copy.html    Visible profile-security patch with copy/download controls
-supabase/daily_qa.sql            Schema source used to generate the combined setup file
+supabase/daily_qa.sql            Schema source used to generate the combined setup file; fresh setup includes admin set assignment
+supabase/assign_student_sets.sql Adds repeat/next-unused set assignment to an already-installed Q-A database
+supabase/assign_student_sets_copy.html  Visible migration panel with copy/download controls
 supabase/authorize_qa_admin.sql  Maps an existing SmartPle admin to the protected Q-A allowlist
 supabase/seed_daily_qa.sql       Canonical 660 ordered P4–P7 Science Q&A seed
 supabase/verify_daily_qa.sql     Read-only checks for shared profiles, policies/RLS/RPCs, and bank counts
 supabase/verify_sql_copy.html    Visible verifier panel with copy/download controls
-tools/build_daily_qa_assets.py   Rebuilds seed, combined setup SQL/copy panel, CSV, and embedded HTML data
+tools/build_daily_qa_assets.py   Rebuilds seed, setup SQL/copy panel, assignment migration panel, CSV, and embedded HTML data
 .env.example                     Reference for browser connection fields; not loaded at runtime
 ```
 
@@ -40,10 +42,11 @@ Q-A is configured to use the **same Supabase project and Auth accounts as the ex
 
 Use these files in the existing student app project’s SQL Editor:
 
-1. Copy/paste the **entire** `supabase/setup_shared_project.sql` and run it. It includes the additive schema, profile mapping, RLS/RPCs, and all 660 seed rows. It expects `smartple_profiles` with `user_id`, `display_name`, `class`, and `role`; it does not replace the Auth signup trigger or alter SmartPle profile grants/policies.
-2. Run `supabase/authorize_qa_admin.sql` as project owner. It authorizes the sole existing SmartPle admin linked to Auth; it stops without changes if zero or multiple linked admins are found. It adds no Auth account and stores no password.
-3. Review and run `supabase/secure_smartple_profiles.sql` as project owner. It removes the reported allow-all profile policies and browser grants, then enables student-self/admin-managed access. It stops if it finds unexpected policies; it does not alter profile rows.
-4. Run `supabase/verify_daily_qa.sql` for read-only checks of shared profiles, the protected admin mapping, Q&A policies/RLS/RPCs, global target row, and minimum per-grade counts.
+1. Copy/paste the **entire** `supabase/setup_shared_project.sql` and run it. It includes the additive schema, profile mapping, RLS/RPCs, admin repeat/next-unused set assignment, and all 660 seed rows. It expects `smartple_profiles` with `user_id`, `display_name`, `class`, and `role`; it does not replace the Auth signup trigger or alter SmartPle profile grants/policies. If this setup has already succeeded, do **not** rerun it just for this feature.
+2. Run `supabase/authorize_qa_admin.sql` as project owner only if admin authorization has not already succeeded. It authorizes the sole existing SmartPle admin linked to Auth; it stops without changes if zero or multiple linked admins are found. It adds no Auth account and stores no password.
+3. For an already-installed Q-A database, run `supabase/assign_student_sets.sql` once. This additive, re-runnable migration adds the admin assignment metadata and guarded RPC; it does not change profiles, questions, or Auth accounts. Fresh installs already include it through `setup_shared_project.sql`.
+4. Review and run `supabase/secure_smartple_profiles.sql` as project owner. It removes the reported allow-all profile policies and browser grants, then enables student-self/admin-managed access. It stops if it finds unexpected policies; it does not alter profile rows.
+5. Run `supabase/verify_daily_qa.sql` for read-only checks of shared profiles, the protected admin mapping, Q&A policies/RLS/RPCs, admin set-assignment support, global target row, and minimum per-grade counts.
 
 `daily_qa.sql` and `seed_daily_qa.sql` remain the separate source files used to build the combined paste-ready setup.
 
@@ -67,8 +70,10 @@ After the first visit, the service worker can reopen the app shell and local dem
 - The built-in Admin Preview controls global, P4–P7 class, and individual student daily targets. Presets are **0, 5, 10, 20, and 50**, with a custom whole-number value from 0 to 500. Precedence is **student override → class rule → global default**; default is 20. A student-level 0 pauses that student; higher-priority rules override lower-priority rules.
 - A class rule can be removed to inherit the global default; a student override can be cleared to inherit the class/global target. The student list searches name/class and displays each learner's effective target, its source, and Q&A status.
 - Dashboard cards show the loaded student count and global default. Selecting a student opens their limit editor and latest Q&A set with question-level studied status. The separate `admin-new` demo's mock roster and localStorage are not used by the built-in panel.
-- Active sets resume; a completed set is not stacked with another on the same day; a learner does not receive a repeated question after exhausting their class bank.
+- Once a student completes a set, the admin can assign one more set immediately: either pick one of that student's completed same-grade sets to repeat, or assign the next unused questions. Each admin assignment is a separate set using the student's effective positive daily target; the student must finish it before the admin can assign another. A paused student must first be given a positive target.
+- Repeated sets are explicit admin assignments and reset their studied status; ordinary automatic sets still avoid questions the student has already seen. New admin-assigned sets use only the next unused questions from the existing grade bank. The learner app refreshes live progress and shows a Start screen for a newly assigned set.
+- Active sets resume; without an admin assignment, a completed set is not stacked with another on the same day; a learner does not receive a repeated question after exhausting their class bank.
 
 ## Validation status
 
-Static checks confirmed all 660 items, exact source wording/order, per-grade counts, the questions-only CSV, generated seed, combined setup SQL, and embedded HTML copies. The inline JavaScript, service worker, PWA manifest, icon assets, required DOM IDs, and local asset responses were checked. The owner reports the combined SQL setup and admin authorization succeeded. The read-only verifier stopped because the existing `smartple_profiles` table has RLS disabled and permissive grants/policies. `secure_smartple_profiles.sql` is prepared but has not been applied; student login, full verification, and device-level PWA installation/offline behavior remain untested.
+Static checks confirmed all 660 items, exact source wording/order, per-grade counts, the questions-only CSV, generated seed, combined setup SQL, assignment migration and copy panel, verifier panel parity, and embedded HTML copies. The inline JavaScript, service worker, PWA manifest, icon assets, required DOM IDs, and local asset responses were checked. The admin set-assignment SQL was statically reviewed but has not been executed or validated against a live PostgreSQL project. The owner reports the combined SQL setup and admin authorization succeeded. The read-only verifier stopped because the existing `smartple_profiles` table has RLS disabled and permissive grants/policies. `secure_smartple_profiles.sql` is prepared but has not been applied; student login, live assignment flow, full verification, and device-level PWA installation/offline behavior remain untested.
