@@ -2,22 +2,23 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Q-A admin set assignment update SQL</title>
+<title>Q-A shared sequence and admin set update SQL</title>
 <style>
 :root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#18241d;background:#f4f7f4}*{box-sizing:border-box}body{margin:0;padding:20px}main{max-width:1100px;margin:0 auto;background:#fff;border:1px solid #dbe4dc;border-radius:16px;overflow:hidden;box-shadow:0 8px 28px #1a392414}header{padding:22px 24px;border-bottom:1px solid #e4ebe4}h1{margin:0 0 8px;font-size:22px}p{margin:6px 0;color:#526157;font-size:14px;line-height:1.5}.note{padding:13px 24px;background:#fff7df;border-bottom:1px solid #f0e3bd;color:#654d1a;font-size:13px;line-height:1.5}.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:14px 24px;border-bottom:1px solid #e4ebe4}button{display:inline-flex;align-items:center;gap:8px;border:1px solid #cfdacf;border-radius:9px;background:#fff;color:#1c3525;font:700 14px system-ui,sans-serif;padding:10px 14px;cursor:pointer}button.primary{background:#176b42;border-color:#176b42;color:#fff}#status{font-size:13px;color:#24633f;min-height:1.4em}textarea{display:block;width:100%;height:min(70vh,900px);min-height:460px;resize:vertical;border:0;background:#111a17;color:#e3f2e9;padding:20px 22px;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre;outline:none}footer{padding:12px 24px;color:#647166;font-size:12px}@media(max-width:600px){body{padding:8px}header{padding:18px}.note,.toolbar,footer{padding-left:18px;padding-right:18px}textarea{font-size:11px;height:68vh}}
 </style>
 </head>
 <body><main>
-<header><h1>Q-A — Admin set assignment update SQL</h1>
-<p>This idempotent additive migration adds the admin-only option to repeat a completed same-grade set or assign the next unused questions after a student finishes.</p>
-<p>Run it in the existing SmartPle project’s SQL Editor after the Q-A schema and admin authorization are in place. Fresh setup already includes this feature; no need to rerun the full setup.</p></header>
-<div class="note"><strong>Safe scope:</strong> this changes only Q-A assignment metadata and a guarded RPC. It does not change Auth accounts, profile rows, question content, or the existing daily target rules. A paused student must first be given a positive target.</div>
+<header><h1>Q-A — Shared sequence and admin set update SQL</h1>
+<p>This re-runnable migration updates existing installs so new sets draw the next unused Science questions in one shared order: P4, P5, P6, then P7. A new student therefore starts at P4 question 1; existing assignments and active sets are preserved. It also supports admin-assigned repeats and next-unused sets.</p>
+<p>Run it in the existing SmartPle project’s SQL Editor after the Q-A setup. It is safe to reapply if you already ran an earlier copy; fresh setup already includes the current behavior.</p></header>
+<div class="note"><strong>Safe scope:</strong> it updates Q-A assignment functions and metadata only. It does not change Auth accounts, profile rows, question content, or target rules. Each new set still uses the student’s effective positive target; paused students must first be given a positive target.</div>
 <div class="toolbar"><button class="primary" id="copy" type="button">Copy SQL</button><button id="download" type="button">Download .sql</button><span id="status" role="status" aria-live="polite"></span></div>
-<textarea id="sql" readonly spellcheck="false" aria-label="Complete admin set assignment update SQL">-- Existing-install update: let the authorized Q-A admin assign one more set
--- after a learner finishes their current set. The admin can either repeat a
--- completed set for that student or assign their next unused questions.
--- Safe to re-run. This does not modify Auth accounts or SmartPle profile rows.
--- For a fresh install, setup_shared_project.sql already includes this feature.
+<textarea id="sql" readonly spellcheck="false" aria-label="Complete admin set assignment update SQL">-- Existing-install update: let the authorized Q-A admin repeat a completed set
+-- or assign next-unused questions, and apply the shared P4→P5→P6→P7 question
+-- sequence for every learner, regardless of their SmartPle class.
+-- Safe to re-run, including if you applied an earlier copy of this migration.
+-- It changes assignment functions/metadata only, not Auth accounts or profile rows.
+-- For a fresh install, setup_shared_project.sql already includes these changes.
 
 begin;
 
@@ -30,8 +31,10 @@ begin
     raise exception 'Q-A setup tables are missing. Run setup_shared_project.sql before this update.';
   end if;
   if to_regprocedure('public.daily_qa_is_admin()') is null
-     or to_regprocedure('public.daily_qa_assignment_payload(uuid,text)') is null then
-    raise exception 'Q-A admin or assignment functions are missing. Run setup_shared_project.sql first.';
+     or to_regprocedure('public.daily_qa_assignment_payload(uuid,text)') is null
+     or to_regprocedure('public.daily_qa_effective_target()') is null
+     or to_regprocedure('public.daily_qa_sync_my_profile()') is null then
+    raise exception 'Q-A admin, profile-sync, or assignment functions are missing. Run setup_shared_project.sql first.';
   end if;
 end;
 $$;
@@ -113,9 +116,118 @@ as $$
 $$;
 revoke all on function public.daily_qa_assignment_payload(uuid, text) from public, anon, authenticated;
 
--- Admins may assign one additional set at a time, and only after the learner's
--- latest set is complete. Passing a completed source assignment repeats it;
--- NULL assigns the next unused questions in the student's current grade.
+-- Update ordinary daily set generation to follow the shared P4→P7 sequence.
+create or replace function public.daily_qa_get_or_start_set()
+returns jsonb
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  v_user uuid := auth.uid();
+  v_today date := (now() at time zone 'Africa/Kampala')::date;
+  v_target integer;
+  v_subject text := 'Science';
+  v_profile public.daily_qa_profiles%rowtype;
+  v_assignment public.daily_qa_assignments%rowtype;
+  v_available integer := 0;
+  v_take integer := 0;
+  v_set_number integer := 1;
+begin
+  if v_user is null then
+    raise exception using errcode = '28000', message = 'Sign in is required.';
+  end if;
+
+  perform public.daily_qa_sync_my_profile();
+  select * into v_profile from public.daily_qa_profiles where user_id = v_user;
+  if not found or v_profile.role &lt;&gt; 'student' then
+    raise exception using errcode = '42501', message = 'A student profile is required.';
+  end if;
+
+  v_target := public.daily_qa_effective_target();
+  if v_target = 0 then
+    return jsonb_build_object(
+      'status', 'paused', 'target', 0,
+      'message', 'Daily Q&amp;A is paused by your admin.'
+    );
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext(v_user::text));
+
+  -- Always resume an unfinished set, even if its assigned date has passed.
+  select * into v_assignment
+  from public.daily_qa_assignments
+  where user_id = v_user and status = 'active'
+  order by set_number desc
+  limit 1
+  for update;
+  if found then
+    return public.daily_qa_assignment_payload(v_assignment.id, 'active');
+  end if;
+
+  -- A completed set counts for its assigned day. Never stack another set that day.
+  select * into v_assignment
+  from public.daily_qa_assignments
+  where user_id = v_user
+  order by set_number desc
+  limit 1;
+  if found and v_assignment.status = 'completed' and v_assignment.assigned_date &gt;= v_today then
+    return public.daily_qa_assignment_payload(v_assignment.id, 'complete');
+  end if;
+
+  -- Do not repeat a question for the same learner.
+  select count(*) into v_available
+  from public.daily_qa_questions q
+  where q.is_active and q.grade in ('P4','P5','P6','P7') and q.subject = v_subject
+    and not exists (
+      select 1 from public.daily_qa_assignment_items i
+      join public.daily_qa_assignments a on a.id = i.assignment_id
+      where a.user_id = v_user and i.question_id = q.id
+    );
+
+  if v_available = 0 then
+    return jsonb_build_object(
+      'status', 'exhausted', 'target', v_target, 'grade_order', 'P4-P7', 'subject', v_subject,
+      'message', 'The shared P4-P7 question sequence is exhausted or not yet available.'
+    );
+  end if;
+
+  v_take := least(v_target, v_available);
+  select coalesce(max(set_number), 0) + 1 into v_set_number
+  from public.daily_qa_assignments where user_id = v_user;
+
+  insert into public.daily_qa_assignments (
+    user_id, set_number, assigned_date, requested_target, target_count, status
+  ) values (v_user, v_set_number, v_today, v_target, v_take, 'active')
+  returning * into v_assignment;
+
+  insert into public.daily_qa_assignment_items (assignment_id, question_id, position)
+  select v_assignment.id, selected.id,
+         row_number() over (
+           order by case selected.grade when 'P4' then 1 when 'P5' then 2 when 'P6' then 3 when 'P7' then 4 end,
+                    selected.sort_order, selected.id
+         )::integer
+  from (
+    select q.id, q.grade, q.sort_order from public.daily_qa_questions q
+    where q.is_active and q.grade in ('P4','P5','P6','P7') and q.subject = v_subject
+      and not exists (
+        select 1 from public.daily_qa_assignment_items i
+        join public.daily_qa_assignments a on a.id = i.assignment_id
+        where a.user_id = v_user and i.question_id = q.id
+      )
+    order by case q.grade when 'P4' then 1 when 'P5' then 2 when 'P6' then 3 when 'P7' then 4 end,
+             q.sort_order, q.id
+    limit v_take
+  ) as selected;
+
+  return public.daily_qa_assignment_payload(v_assignment.id, 'active');
+end;
+$$;
+revoke all on function public.daily_qa_get_or_start_set() from public, anon;
+grant execute on function public.daily_qa_get_or_start_set() to authenticated;
+
+-- Admin can assign one additional set after the learner's latest set is complete.
+-- A source assignment repeats that completed set; NULL means next unused questions
+-- from the shared sequence (P4 first, followed by P5, P6, and P7) for every learner.
 create or replace function public.daily_qa_admin_assign_set(
   p_user_id uuid,
   p_source_assignment_id uuid default null
@@ -131,7 +243,6 @@ declare
   v_latest public.daily_qa_assignments%rowtype;
   v_source public.daily_qa_assignments%rowtype;
   v_assignment public.daily_qa_assignments%rowtype;
-  v_grade text;
   v_subject text := 'Science';
   v_target integer;
   v_available integer := 0;
@@ -156,7 +267,6 @@ begin
   if not found then
     raise exception using errcode = '42501', message = 'A current SmartPle student profile is required.';
   end if;
-  v_grade := coalesce(v_profile.class, 'P4');
 
   -- Resolve the selected student's target (not the signed-in admin's target).
   select coalesce(
@@ -217,9 +327,9 @@ begin
       from public.daily_qa_assignment_items i
       join public.daily_qa_questions q on q.id = i.question_id
       where i.assignment_id = v_source.id
-        and (q.grade &lt;&gt; v_grade or q.subject &lt;&gt; v_subject)
+        and (q.grade not in ('P4','P5','P6','P7') or q.subject &lt;&gt; v_subject)
     ) then
-      raise exception using errcode = '22023', message = 'Only a completed set for the student’s current grade can be repeated.';
+      raise exception using errcode = '22023', message = 'The selected set contains questions outside the shared P4-P7 Science bank.';
     end if;
 
     insert into public.daily_qa_assignments (
@@ -238,14 +348,14 @@ begin
   else
     select count(*)::integer into v_available
     from public.daily_qa_questions q
-    where q.is_active and q.grade = v_grade and q.subject = v_subject
+    where q.is_active and q.grade in ('P4','P5','P6','P7') and q.subject = v_subject
       and not exists (
         select 1 from public.daily_qa_assignment_items i
         join public.daily_qa_assignments a on a.id = i.assignment_id
         where a.user_id = p_user_id and i.question_id = q.id
       );
     if v_available = 0 then
-      raise exception using errcode = '22023', message = 'No unused questions remain for this student’s class.';
+      raise exception using errcode = '22023', message = 'No unused questions remain in the shared P4-P7 sequence.';
     end if;
 
     v_take := least(v_target, v_available);
@@ -259,17 +369,18 @@ begin
 
     insert into public.daily_qa_assignment_items (assignment_id, question_id, position)
     select v_assignment.id, selected.id,
-           row_number() over (order by selected.sort_order, selected.id)::integer
+           row_number() over (order by case selected.grade when 'P4' then 1 when 'P5' then 2 when 'P6' then 3 when 'P7' then 4 end, selected.sort_order, selected.id)::integer
     from (
-      select q.id, q.sort_order
+      select q.id, q.grade, q.sort_order
       from public.daily_qa_questions q
-      where q.is_active and q.grade = v_grade and q.subject = v_subject
+      where q.is_active and q.grade in ('P4','P5','P6','P7') and q.subject = v_subject
         and not exists (
           select 1 from public.daily_qa_assignment_items i
           join public.daily_qa_assignments a on a.id = i.assignment_id
           where a.user_id = p_user_id and i.question_id = q.id
         )
-      order by q.sort_order, q.id
+      order by case q.grade when 'P4' then 1 when 'P5' then 2 when 'P6' then 3 when 'P7' then 4 end,
+               q.sort_order, q.id
       limit v_take
     ) as selected;
   end if;

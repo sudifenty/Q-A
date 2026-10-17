@@ -147,8 +147,8 @@ textarea{display:block;width:100%;height:min(70vh,900px);min-height:460px;resize
 <header>
 <h1>Q-A — Supabase setup SQL</h1>
 <p>This is the full, additive schema-plus-seed script for the existing SmartPle student-app project: <strong>__LINE_COUNT__ lines, 660 questions</strong>.</p>
-<p>For a fresh project, this includes the admin repeat/next-unused set feature. On an already-set-up project, do not rerun this full setup; run <code>assign_student_sets.sql</code> once to add that feature.</p>
-<p>Then run <code>authorize_qa_admin.sql</code> if needed, review/apply <code>secure_smartple_profiles.sql</code>, and finish with <code>verify_daily_qa.sql</code>.</p>
+<p>For a fresh project, this includes the shared P4→P5→P6→P7 sequence and admin repeat/next-unused set controls. On an already-set-up project, do not rerun this full setup; apply the refreshed <code>assign_student_sets.sql</code> migration.</p>
+<p>The assignment migration is safe to reapply if you already ran an earlier copy. Then run <code>authorize_qa_admin.sql</code> if needed, review/apply <code>secure_smartple_profiles.sql</code>, and finish with <code>verify_daily_qa.sql</code>.</p>
 </header>
 <div class="note"><strong>Before running:</strong> make sure Supabase is open to project <code>ftykmafgfyqvniacguyi</code>. The script checks for the expected <code>smartple_profiles</code> table/columns and stops if they are missing. This panel does not run SQL or contact Supabase.</div>
 <div class="toolbar">
@@ -185,16 +185,16 @@ def build_assignment_copy_panel(sql_text: str) -> str:
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Q-A admin set assignment update SQL</title>
+<title>Q-A shared sequence and admin set update SQL</title>
 <style>
 :root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#18241d;background:#f4f7f4}*{box-sizing:border-box}body{margin:0;padding:20px}main{max-width:1100px;margin:0 auto;background:#fff;border:1px solid #dbe4dc;border-radius:16px;overflow:hidden;box-shadow:0 8px 28px #1a392414}header{padding:22px 24px;border-bottom:1px solid #e4ebe4}h1{margin:0 0 8px;font-size:22px}p{margin:6px 0;color:#526157;font-size:14px;line-height:1.5}.note{padding:13px 24px;background:#fff7df;border-bottom:1px solid #f0e3bd;color:#654d1a;font-size:13px;line-height:1.5}.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:14px 24px;border-bottom:1px solid #e4ebe4}button{display:inline-flex;align-items:center;gap:8px;border:1px solid #cfdacf;border-radius:9px;background:#fff;color:#1c3525;font:700 14px system-ui,sans-serif;padding:10px 14px;cursor:pointer}button.primary{background:#176b42;border-color:#176b42;color:#fff}#status{font-size:13px;color:#24633f;min-height:1.4em}textarea{display:block;width:100%;height:min(70vh,900px);min-height:460px;resize:vertical;border:0;background:#111a17;color:#e3f2e9;padding:20px 22px;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre;outline:none}footer{padding:12px 24px;color:#647166;font-size:12px}@media(max-width:600px){body{padding:8px}header{padding:18px}.note,.toolbar,footer{padding-left:18px;padding-right:18px}textarea{font-size:11px;height:68vh}}
 </style>
 </head>
 <body><main>
-<header><h1>Q-A — Admin set assignment update SQL</h1>
-<p>This idempotent additive migration adds the admin-only option to repeat a completed same-grade set or assign the next unused questions after a student finishes.</p>
-<p>Run it in the existing SmartPle project’s SQL Editor after the Q-A schema and admin authorization are in place. Fresh setup already includes this feature; no need to rerun the full setup.</p></header>
-<div class="note"><strong>Safe scope:</strong> this changes only Q-A assignment metadata and a guarded RPC. It does not change Auth accounts, profile rows, question content, or the existing daily target rules. A paused student must first be given a positive target.</div>
+<header><h1>Q-A — Shared sequence and admin set update SQL</h1>
+<p>This re-runnable migration updates existing installs so new sets draw the next unused Science questions in one shared order: P4, P5, P6, then P7. A new student therefore starts at P4 question 1; existing assignments and active sets are preserved. It also supports admin-assigned repeats and next-unused sets.</p>
+<p>Run it in the existing SmartPle project’s SQL Editor after the Q-A setup. It is safe to reapply if you already ran an earlier copy; fresh setup already includes the current behavior.</p></header>
+<div class="note"><strong>Safe scope:</strong> it updates Q-A assignment functions and metadata only. It does not change Auth accounts, profile rows, question content, or target rules. Each new set still uses the student’s effective positive target; paused students must first be given a positive target.</div>
 <div class="toolbar"><button class="primary" id="copy" type="button">Copy SQL</button><button id="download" type="button">Download .sql</button><span id="status" role="status" aria-live="polite"></span></div>
 <textarea id="sql" readonly spellcheck="false" aria-label="Complete admin set assignment update SQL">__ESCAPED_SQL__</textarea>
 <footer>Tip: if clipboard access is blocked, click inside the SQL box, press Ctrl+A (or ⌘A), then Ctrl+C (or ⌘C).</footer>
@@ -226,10 +226,10 @@ def main() -> None:
     assignment_sql = ASSIGNMENT_PATH.read_text(encoding="utf-8")
     setup_sql = (
         "-- COPY/PASTE THIS ENTIRE FILE into the SQL Editor of the existing SmartPle project.\n"
-        "-- It installs the additive Q-A schema, admin repeat/next-unused set assignment, and all 660 questions.\n"
+        "-- It installs the shared P4-to-P7 sequence, admin repeat/next-unused set assignment, and all 660 questions.\n"
         "-- After it succeeds, run authorize_qa_admin.sql (it requires exactly one linked admin),\n"
         "-- then secure_smartple_profiles.sql, and finally verify_daily_qa.sql.\n"
-        "-- If the full setup already succeeded, do not rerun it for the assignment feature; run assign_student_sets.sql once.\n"
+        "-- If the full setup already succeeded, do not rerun it; apply the refreshed assign_student_sets.sql migration once.\n"
         "-- Never put a service-role key in the client.\n\n"
         + schema_sql.rstrip()
         + "\n\n-- Ordered P4-P7 Science Q&A seed (660 items).\n"
