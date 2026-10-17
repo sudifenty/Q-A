@@ -1,5 +1,5 @@
-/* Static app-shell cache includes the embedded demo bank; Supabase traffic and live progress are never cached. */
-const CACHE_NAME = 'smartple-qa-shell-v2';
+/* Static app-shell cache includes the embedded demo Science/SST banks; Supabase traffic and live progress are never cached. */
+const CACHE_NAME = 'smartple-qa-shell-v3';
 const SCOPE_URL = new URL(self.registration.scope);
 const INDEX_URL = new URL('index.html', SCOPE_URL).href;
 const SHELL_URLS = [

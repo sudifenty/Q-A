@@ -2,7 +2,7 @@
   "id": "./",
   "name": "SmartPle PLE Science — Daily Q&A",
   "short_name": "SmartPle Q&A",
-  "description": "P4–P7 guided Science Q&A plus a question-only SST revision sequence from P3 through P7.",
+  "description": "Admin-assigned daily Science or question-only P3–P7 SST revision sets; 20 questions by default.",
   "lang": "en",
   "start_url": "./",
   "scope": "./",

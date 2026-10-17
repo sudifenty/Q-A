@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate the Q-A seed/setup assets, SST question-only export, and embedded HTML banks.
+"""Regenerate Q-A/SST seeds, subject-assignment SQL panels, and embedded banks.
 
 Edit content/question_bank.json or content/sst_questions_p3_p7.json in source order, then run:
     python tools/build_daily_qa_assets.py
@@ -24,6 +24,7 @@ COPY_PANEL_PATH = ROOT / "supabase" / "setup_sql_copy.html"
 ORDER_PATH = ROOT / "content" / "question_order.csv"
 SST_BANK_PATH = ROOT / "content" / "sst_questions_p3_p7.json"
 SST_TEXT_PATH = ROOT / "content" / "SST_Questions_P3-P7_Only.txt"
+SST_SEED_PATH = ROOT / "supabase" / "seed_sst_questions.sql"
 HTML_PATH = ROOT / "index.html"
 EXPECTED_COUNTS = {"P4": 160, "P5": 180, "P6": 200, "P7": 120}
 EXPECTED_SST_COUNTS = {"P3": 180, "P4": 360, "P5": 660, "P6": 540, "P7": 300}
@@ -165,6 +166,60 @@ def build_seed(items: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def build_sst_seed(items: list[dict]) -> str:
+    """Build SQL rows without any SST answer key; MCQ choices stay unmarked JSON."""
+    lines = [
+        "-- Question-only P3-P7 SST bank; answer is NULL for every row.",
+        "-- Source order is P3 Q1 through P7 Q2040; choices are stored as unmarked text.",
+        "insert into public.daily_qa_questions",
+        "  (id, grade, subject, topic, sort_order, prompt, answer, options, source_file, is_active)",
+        "values",
+    ]
+    rows = []
+    for item in items:
+        options = item["options"]
+        options_sql = "NULL" if options is None else sql_text(json.dumps(options, ensure_ascii=False, separators=(",", ":"))) + "::jsonb"
+        values = [
+            sql_text(item["id"]),
+            sql_text(item["class"]),
+            sql_text("SST"),
+            sql_text(item["topic"]),
+            str(int(item["source_number"])),
+            sql_text(item["prompt"]),
+            "NULL",
+            options_sql,
+            sql_text("content/sst_questions_p3_p7.json"),
+            "true",
+        ]
+        rows.append("  (" + ", ".join(values) + ")")
+    lines.append(",\n".join(rows))
+    lines.extend([
+        "on conflict (id) do update set",
+        "  grade = excluded.grade,",
+        "  subject = excluded.subject,",
+        "  topic = excluded.topic,",
+        "  sort_order = excluded.sort_order,",
+        "  prompt = excluded.prompt,",
+        "  answer = excluded.answer,",
+        "  options = excluded.options,",
+        "  source_file = excluded.source_file,",
+        "  is_active = excluded.is_active;",
+        "",
+    ])
+    return "\n".join(lines)
+
+
+def replace_generated_block(sql: str, start_marker: str, end_marker: str, replacement: str) -> str:
+    pattern = re.compile(re.escape(start_marker) + r".*?" + re.escape(end_marker), re.S)
+    start_line = start_marker + "\n"
+    end_line = "\n" + end_marker
+    value = start_line + replacement.rstrip() + end_line
+    updated, count = pattern.subn(lambda _: value, sql, count=1)
+    if count != 1:
+        raise ValueError(f"Could not find generated SQL block {start_marker!r}..{end_marker!r}")
+    return updated
+
+
 def build_order_csv(items: list[dict]) -> str:
     from io import StringIO
 
@@ -213,8 +268,8 @@ textarea{display:block;width:100%;height:min(70vh,900px);min-height:460px;resize
 <main>
 <header>
 <h1>Q-A — Supabase setup SQL</h1>
-<p>This is the full, additive schema-plus-seed script for the existing SmartPle student-app project: <strong>__LINE_COUNT__ lines, 660 questions</strong>.</p>
-<p>For a fresh project, this includes the shared P4→P5→P6→P7 sequence and admin repeat/next-unused set controls. On an already-set-up project, do not rerun this full setup; apply the refreshed <code>assign_student_sets.sql</code> migration.</p>
+<p>This is the full, additive schema-plus-seed script for the existing SmartPle student-app project: <strong>__LINE_COUNT__ lines, 2,700 questions (660 Science + 2,040 SST)</strong>.</p>
+<p>For a fresh project, this includes the guided P4→P7 Science bank, question-only P3→P7 SST bank, and admin-assigned student subject with the shared daily target/set flow. On an already-set-up project, do not rerun this full setup; apply the refreshed <code>assign_student_sets.sql</code> migration.</p>
 <p>The assignment migration is safe to reapply if you already ran an earlier copy. Then run <code>authorize_qa_admin.sql</code> if needed, review/apply <code>secure_smartple_profiles.sql</code>, and finish with <code>verify_daily_qa.sql</code>.</p>
 </header>
 <div class="note"><strong>Before running:</strong> make sure Supabase is open to project <code>ftykmafgfyqvniacguyi</code>. The script checks for the expected <code>smartple_profiles</code> table/columns and stops if they are missing. This panel does not run SQL or contact Supabase.</div>
@@ -259,9 +314,9 @@ def build_assignment_copy_panel(sql_text: str) -> str:
 </head>
 <body><main>
 <header><h1>Q-A — Shared sequence and admin set update SQL</h1>
-<p>This re-runnable migration updates existing installs so new sets draw the next unused Science questions in one shared order: P4, P5, P6, then P7. A new student therefore starts at P4 question 1; existing assignments and active sets are preserved. It also supports admin-assigned repeats and next-unused sets.</p>
-<p>Run it in the existing SmartPle project’s SQL Editor after the Q-A setup. It is safe to reapply if you already ran an earlier copy; fresh setup already includes the current behavior.</p></header>
-<div class="note"><strong>Safe scope:</strong> it updates Q-A assignment functions and metadata only. It does not change Auth accounts, profile rows, question content, or target rules. Each new set still uses the student’s effective positive target; paused students must first be given a positive target.</div>
+<p>This re-runnable migration adds SST question-only rows, per-student Science/SST assignment, and the same daily set flow for both banks. SST starts at P3 Q1 and continues through P7 Q2040. New sets use the student's effective daily target (20 by default); active/completed sets and existing Auth/profile rows are preserved.</p>
+<p>Run it in the existing SmartPle project’s SQL Editor after the Q-A setup. It is safe to reapply; fresh setup already includes the current behavior.</p></header>
+<div class="note"><strong>Safe scope:</strong> adds Q-A bank columns/rows and updates subject-aware assignment RPCs. It does not create accounts, modify profile rows, replace Auth/security setup, or change existing progress. A subject change applies to the next set; an active set is finished unchanged.</div>
 <div class="toolbar"><button class="primary" id="copy" type="button">Copy SQL</button><button id="download" type="button">Download .sql</button><span id="status" role="status" aria-live="polite"></span></div>
 <textarea id="sql" readonly spellcheck="false" aria-label="Complete admin set assignment update SQL">__ESCAPED_SQL__</textarea>
 <footer>Tip: if clipboard access is blocked, click inside the SQL box, press Ctrl+A (or ⌘A), then Ctrl+C (or ⌘C).</footer>
@@ -289,20 +344,32 @@ def main() -> None:
     items = load_and_validate()
     sst_items = load_and_validate_sst()
     seed_sql = build_seed(items)
+    sst_seed_sql = build_sst_seed(sst_items)
     SST_TEXT_PATH.write_text(build_sst_text(sst_items), encoding="utf-8")
+    SST_SEED_PATH.write_text(sst_seed_sql, encoding="utf-8")
     SEED_PATH.write_text(seed_sql, encoding="utf-8")
     schema_sql = SCHEMA_PATH.read_text(encoding="utf-8")
     assignment_sql = ASSIGNMENT_PATH.read_text(encoding="utf-8")
+    assignment_sql = replace_generated_block(
+        assignment_sql,
+        "-- BEGIN GENERATED SST QUESTION-ONLY BANK",
+        "-- END GENERATED SST QUESTION-ONLY BANK",
+        sst_seed_sql,
+    )
+    ASSIGNMENT_PATH.write_text(assignment_sql, encoding="utf-8")
     setup_sql = (
         "-- COPY/PASTE THIS ENTIRE FILE into the SQL Editor of the existing SmartPle project.\n"
-        "-- It installs the shared P4-to-P7 sequence, admin repeat/next-unused set assignment, and all 660 questions.\n"
-        "-- After it succeeds, run authorize_qa_admin.sql (it requires exactly one linked admin),\n"
-        "-- then secure_smartple_profiles.sql, and finally verify_daily_qa.sql.\n"
-        "-- If the full setup already succeeded, do not rerun it; apply the refreshed assign_student_sets.sql migration once.\n"
+        "-- Fresh setup: 660 guided Science Q&A questions plus 2,040 question-only SST items.\n"
+        "-- Admin assigns Science or SST per student; both use the same daily target (20 by default).\n"
+        "-- After setup, run authorize_qa_admin.sql only if not already successful, then review the\n"
+        "-- separate profile-security patch and finish with verify_daily_qa.sql.\n"
+        "-- If setup already succeeded, do not rerun it; apply the refreshed assign_student_sets.sql migration once.\n"
         "-- Never put a service-role key in the client.\n\n"
         + schema_sql.rstrip()
         + "\n\n-- Ordered P4-P7 Science Q&A seed (660 items).\n"
         + seed_sql.rstrip()
+        + "\n\n-- Question-only P3-P7 SST bank (2,040 items; answer is NULL).\n"
+        + sst_seed_sql.rstrip()
         + "\n"
     )
     SETUP_PATH.write_text(setup_sql, encoding="utf-8")
@@ -315,16 +382,18 @@ def main() -> None:
     html = embed_json(html, "schema-sql", schema_sql)
     html = embed_json(html, "assignment-sql", assignment_sql)
     html = embed_json(html, "seed-sql", seed_sql)
+    html = embed_json(html, "sst-seed-sql", sst_seed_sql)
     HTML_PATH.write_text(html, encoding="utf-8")
     print("Generated 660 ordered Q&A items:", dict(Counter(grade_code(item["grade"]) for item in items)))
     print(f"Wrote {SEED_PATH.relative_to(ROOT)}")
+    print(f"Wrote {SST_SEED_PATH.relative_to(ROOT)} (2,040 question-only SST rows; NULL answers)")
     print(f"Wrote {SETUP_PATH.relative_to(ROOT)} (schema + seed, ready to copy/paste)")
     print(f"Wrote {COPY_PANEL_PATH.relative_to(ROOT)} (visible setup SQL with Copy and Download controls)")
     print(f"Wrote {ASSIGNMENT_COPY_PATH.relative_to(ROOT)} (visible existing-install migration with Copy and Download controls)")
     print(f"Wrote {ORDER_PATH.relative_to(ROOT)} (questions only; no answers)")
     print(f"Wrote {SST_TEXT_PATH.relative_to(ROOT)} (questions only; no answers)")
-    print("Validated and embedded 2,040 question-only SST items in index.html")
-    print("Synchronized Q&A bank, SST bank, and SQL in index.html")
+    print("Validated 660 Science and 2,040 question-only SST rows")
+    print("Synchronized embedded banks and complete setup/upgrade SQL")
 
 
 if __name__ == "__main__":
