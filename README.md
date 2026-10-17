@@ -5,12 +5,14 @@ This is the single-file Q&A application, with **Open student preview** and **Ope
 ## Files
 
 ```text
-index.html                       Student flow, admin controls, shared P4–P7 bank browser, and embedded Q&A bank
+index.html                       Student flow, admin controls, shared P4–P7 Q&A browser, and embedded Q&A/SST banks
 manifest.webmanifest              Installable PWA name, scope, colors, and icons
 service-worker.js                 Offline app-shell cache; never caches Supabase/private API traffic
 icons/                            192px, 512px, and Apple touch icons
-content/question_bank.json       Canonical, ordered P4–P7 Science Q&A used by the app
-content/question_order.csv       Question-only grade/topic/order index; no answers
+content/question_bank.json       Canonical, ordered P4–P7 Science Q&A with answer guides
+content/question_order.csv       Question-only P4–P7 Q&A grade/topic/order index
+content/sst_questions_p3_p7.json Canonical P3–P7 SST questions only; 2,040 source-ordered items
+content/SST_Questions_P3-P7_Only.txt Readable SST question-only export; no answer keys
 supabase/setup_shared_project.sql Paste-ready schema plus all 660 questions for the existing SmartPle project
 supabase/setup_sql_copy.html     Visible SQL panel with copy/download controls
 supabase/secure_smartple_profiles.sql Restricts shared profile access while preserving student/admin reads
@@ -22,7 +24,7 @@ supabase/authorize_qa_admin.sql  Maps an existing SmartPle admin to the protecte
 supabase/seed_daily_qa.sql       Canonical 660 ordered P4–P7 Science Q&A seed
 supabase/verify_daily_qa.sql     Read-only checks for shared profiles, policies/RLS/RPCs, and bank counts
 supabase/verify_sql_copy.html    Visible verifier panel with copy/download controls
-tools/build_daily_qa_assets.py   Rebuilds seed, setup SQL/copy panel, assignment migration panel, CSV, and embedded HTML data
+tools/build_daily_qa_assets.py   Rebuilds Q&A SQL/assets and CSV, the SST text export, and both embedded HTML banks
 .env.example                     Reference for browser connection fields; not loaded at runtime
 ```
 
@@ -30,11 +32,17 @@ tools/build_daily_qa_assets.py   Rebuilds seed, setup SQL/copy panel, assignment
 
 The Q&A wording was copied from the existing app data, not newly authored or shuffled. The P4 source bank remains in its original order. P5, P6, and P7 use the existing short-answer revision banks in their original topic/question order and retain their source IDs. The resulting bank has **P4: 160, P5: 180, P6: 200, P7: 120** Science questions (660 total). `content/question_order.csv` is the question-only list for checking grade and order; the learner experience still shows each existing question with its answer together, as guided revision.
 
-If you edit the canonical JSON while preserving its sequence and per-grade numbering, regenerate the seed, one-file paste-ready setup, question-only CSV, and embedded HTML data with:
+For the existing answer-guided Q&A, edit `content/question_bank.json`. For SST, edit only `content/sst_questions_p3_p7.json` and keep the source order and Q1–Q2040 numbering. Then run the asset builder from the repository root:
 
 ```bash
 python tools/build_daily_qa_assets.py
 ```
+
+It regenerates the existing Q&A SQL assets and order CSV, creates the SST question-only text export, validates both banks, and embeds both banks in `index.html`.
+
+## SST question-only sequence
+
+The existing P4–P7 Science Q&A track remains intact. SST is a separate student mode in the same single-file app: every learner starts at P3 Q1 and follows the complete document order through P4, P5, P6, and P7 Q2040, regardless of profile class. The SST bank contains P3 180, P4 360, P5 660, P6 540, and P7 300 items (2,040 total, 34 topics). It shows questions only; MCQ options are listed without a correct-answer marker, and there are no answer keys, automatic scoring, or SST database seed. Opening SST always resets the local sequence to P3 Q1. The embedded bank is included in the offline app shell.
 
 ## Shared Supabase Auth and setup
 
@@ -62,11 +70,12 @@ Serve the file from an `http(s)` site for live requests; some browsers block API
 
 The app includes a web manifest, app icons, an install prompt where supported, and a service worker. Serve it from **HTTPS** (or `localhost` for testing); PWA installation/service workers do not work from `file://`. On iPhone/iPad, use **Share → Add to Home Screen**.
 
-After the first visit, the service worker can reopen the app shell and local demo offline. It caches same-origin static files/icons; because the demo bank is embedded in `index.html`, that embedded Q&A bank is included in the app-shell cache. It does **not** cache Supabase Auth/API responses or live learner progress. **Live sign-in and progress saving need internet**; offline actions are not queued for later sync.
+After the first visit, the service worker can reopen the app shell and both embedded banks offline: the guided Q&A bank and the question-only P3–P7 SST sequence are inside `index.html`. It caches same-origin static files/icons. It does **not** cache Supabase Auth/API responses or live learner progress. **Live sign-in and progress saving need internet**; offline actions are not queued for later sync.
 
 ## Behavior
 
 - Guided revision: one question at a time, with its answer/explanation shown together. **NEXT** marks an unstudied question and advances; students can use **BACK** to review the previous question without undoing its studied status. Navigating forward through a question already studied does not change saved progress. There are no answer prompts, options, grading, or scores.
+- SST revision is a separate question-only screen, reachable from the landing page and student view. It starts at P3 Q1, moves through the full 2,040-question sequence without class-boundary stops, shows unmarked MCQ options, and never reveals answers or scores.
 - The built-in Admin Preview controls global, P4–P7 class, and individual student daily targets. Presets are **0, 5, 10, 20, and 50**, with a custom whole-number value from 0 to 500. Precedence is **student override → class rule → global default**; default is 20. A student-level 0 pauses that student; higher-priority rules override lower-priority rules.
 - A class rule can be removed to inherit the global default; a student override can be cleared to inherit the class/global target. The student list searches name/class and displays each learner's effective target, its source, and Q&A status.
 - Every student follows the same content sequence regardless of profile class: new students start at P4 question 1; new sets draw the next unused questions in P4, then P5, P6, and P7 order. The student’s class still controls class-target inheritance and roster display, not question selection. Previously assigned questions are skipped and existing active sets are preserved; question grade/topic are shown on each learner card.
@@ -77,4 +86,4 @@ After the first visit, the service worker can reopen the app shell and local dem
 
 ## Validation status
 
-Static checks confirmed all 660 items, exact source wording/order, per-grade counts, the questions-only CSV, generated seed, combined setup SQL, refreshed assignment migration and copy panel, verifier panel parity, and embedded HTML copies. The inline JavaScript, admin full-bank rendering, service worker, PWA manifest, icon assets, required DOM IDs, and local asset responses were checked. Demo tests confirmed that a P7 learner starts at P4 Q1, the sequence crosses into P5 only after P4, explicit repeats reproduce the selected set, and next-unused assignment skips previously assigned items. Student Back/Next tests confirmed previous-question review preserves studied timestamps and only unstudied items are submitted as progress. The SQL migration was statically reviewed but has not been executed or validated against a live PostgreSQL project. The owner reports the combined SQL setup and admin authorization succeeded; do not rerun the full setup for these changes. The read-only verifier stopped because the existing `smartple_profiles` table has RLS disabled and permissive grants/policies. `secure_smartple_profiles.sql` is prepared but has not been applied; student login, live assignment flow, full verification, and device-level PWA installation/offline behavior remain untested.
+Static checks confirmed all 660 existing Q&A items, exact source wording/order, per-grade counts, the questions-only CSV, generated seed, combined setup SQL, refreshed assignment migration and copy panel, verifier panel parity, and embedded HTML copies. SST checks confirmed the 2,040-item source-number sequence, class totals and boundaries (P3 180, P4 360, P5 660, P6 540, P7 300), 34 topics, 170 four-choice questions, question-only fields, no answer-key lines in the text export, and an embedded bank identical to the canonical JSON. JavaScript syntax and DOM smoke tests confirmed SST Q1→Q2040 across class boundaries, completion/restart behavior, and preservation of the original Q&A demo questions and answers. The admin full-bank rendering, service worker, PWA manifest, icon assets, required DOM IDs, and local asset responses were also checked. Demo tests confirmed that a P7 learner starts at P4 Q1, the sequence crosses into P5 only after P4, explicit repeats reproduce the selected set, and next-unused assignment skips previously assigned items. Student Back/Next tests confirmed previous-question review preserves studied timestamps and only unstudied items are submitted as progress. The SQL migration was statically reviewed but has not been executed or validated against a live PostgreSQL project. The owner reports the combined SQL setup and admin authorization succeeded; do not rerun the full setup for these changes. The read-only verifier stopped because the existing `smartple_profiles` table has RLS disabled and permissive grants/policies. `secure_smartple_profiles.sql` is prepared but has not been applied; student login, live assignment flow, full verification, and device-level PWA installation/offline behavior remain untested.

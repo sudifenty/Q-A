@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Regenerate the Q-A seed, setup SQL/copy panel, admin-assignment migration panel, order CSV, and embedded HTML data.
+"""Regenerate the Q-A seed/setup assets, SST question-only export, and embedded HTML banks.
 
-Edit content/question_bank.json in its existing order, then run:
+Edit content/question_bank.json or content/sst_questions_p3_p7.json in source order, then run:
     python tools/build_daily_qa_assets.py
 """
 from __future__ import annotations
@@ -22,8 +22,11 @@ ASSIGNMENT_COPY_PATH = ROOT / "supabase" / "assign_student_sets_copy.html"
 SETUP_PATH = ROOT / "supabase" / "setup_shared_project.sql"
 COPY_PANEL_PATH = ROOT / "supabase" / "setup_sql_copy.html"
 ORDER_PATH = ROOT / "content" / "question_order.csv"
+SST_BANK_PATH = ROOT / "content" / "sst_questions_p3_p7.json"
+SST_TEXT_PATH = ROOT / "content" / "SST_Questions_P3-P7_Only.txt"
 HTML_PATH = ROOT / "index.html"
 EXPECTED_COUNTS = {"P4": 160, "P5": 180, "P6": 200, "P7": 120}
+EXPECTED_SST_COUNTS = {"P3": 180, "P4": 360, "P5": 660, "P6": 540, "P7": 300}
 
 
 def sql_text(value: str) -> str:
@@ -57,6 +60,70 @@ def load_and_validate() -> list[dict]:
             if not item.get("question", "").strip() or not item.get("answer", "").strip():
                 raise ValueError(f"Question and answer are required: {item['id']}")
     return items
+
+
+
+
+def load_and_validate_sst() -> list[dict]:
+    """Load the local P3–P7 SST source, enforcing question-only and source order."""
+    items = json.loads(SST_BANK_PATH.read_text(encoding="utf-8"))
+    if not isinstance(items, list):
+        raise ValueError("The SST bank must be a JSON array.")
+    counts = Counter(item.get("class") for item in items)
+    if dict(counts) != EXPECTED_SST_COUNTS:
+        raise ValueError(f"Unexpected SST class counts: {dict(counts)}")
+    if len(items) != 2040:
+        raise ValueError(f"Expected 2,040 SST questions; found {len(items)}")
+    expected_keys = {"id", "source_number", "class", "subject", "topic", "prompt", "options"}
+    ids = [item.get("id") for item in items]
+    if len(ids) != len(set(ids)):
+        raise ValueError("SST question IDs must be unique.")
+    previous_class = 0
+    mcq_count = 0
+    class_codes = {f"P{n}": n for n in range(3, 8)}
+    for number, item in enumerate(items, start=1):
+        if set(item) != expected_keys:
+            raise ValueError(f"SST item {number} must contain only question fields; found keys {sorted(item)}")
+        if item["source_number"] != number:
+            raise ValueError(f"SST source order must be Q1–Q2040; position {number} has {item['source_number']}")
+        if item["subject"] != "SST" or item["class"] not in EXPECTED_SST_COUNTS:
+            raise ValueError(f"Invalid SST class/subject at Q{number}")
+        class_number = class_codes[item["class"]]
+        if class_number < previous_class:
+            raise ValueError(f"SST class order goes backwards at Q{number}")
+        previous_class = class_number
+        if not item["prompt"].strip() or not item["topic"].strip():
+            raise ValueError(f"SST prompt/topic is empty at Q{number}")
+        options = item["options"]
+        if options is not None:
+            if not isinstance(options, list) or len(options) != 4 or not all(isinstance(option, str) for option in options):
+                raise ValueError(f"SST MCQ options must be four unmarked strings at Q{number}")
+            if any(re.match(r"^[A-D][.)]\s", option) for option in options):
+                raise ValueError(f"SST option text must not contain answer markers at Q{number}")
+            mcq_count += 1
+    if mcq_count != 170:
+        raise ValueError(f"Expected 170 unmarked four-choice SST MCQs; found {mcq_count}")
+    return items
+
+
+def build_sst_text(items: list[dict]) -> str:
+    """Create a readable question-only copy; never serialize answer keys."""
+    lines = ["Uganda Primary SST Revision — Questions Only", "P3 to P7 · 2,040 questions · source order", ""]
+    current_class = None
+    current_topic = None
+    for item in items:
+        if item["class"] != current_class:
+            current_class = item["class"]
+            current_topic = None
+            lines.extend(["", f"{current_class} SST", "=" * (len(current_class) + 4), ""])
+        if item["topic"] != current_topic:
+            current_topic = item["topic"]
+            lines.extend([current_topic, "-" * len(current_topic)])
+        lines.append(f"Q{item['source_number']}. {item['prompt']}")
+        if item["options"]:
+            lines.extend(f"{chr(65 + index)}. {option}" for index, option in enumerate(item["options"]))
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def build_seed(items: list[dict]) -> str:
@@ -220,7 +287,9 @@ def embed_json(html: str, script_id: str, value: str | list[dict]) -> str:
 
 def main() -> None:
     items = load_and_validate()
+    sst_items = load_and_validate_sst()
     seed_sql = build_seed(items)
+    SST_TEXT_PATH.write_text(build_sst_text(sst_items), encoding="utf-8")
     SEED_PATH.write_text(seed_sql, encoding="utf-8")
     schema_sql = SCHEMA_PATH.read_text(encoding="utf-8")
     assignment_sql = ASSIGNMENT_PATH.read_text(encoding="utf-8")
@@ -242,6 +311,7 @@ def main() -> None:
     ORDER_PATH.write_text(build_order_csv(items), encoding="utf-8")
     html = HTML_PATH.read_text(encoding="utf-8")
     html = embed_json(html, "question-bank", items)
+    html = embed_json(html, "sst-question-bank", sst_items)
     html = embed_json(html, "schema-sql", schema_sql)
     html = embed_json(html, "assignment-sql", assignment_sql)
     html = embed_json(html, "seed-sql", seed_sql)
@@ -252,7 +322,9 @@ def main() -> None:
     print(f"Wrote {COPY_PANEL_PATH.relative_to(ROOT)} (visible setup SQL with Copy and Download controls)")
     print(f"Wrote {ASSIGNMENT_COPY_PATH.relative_to(ROOT)} (visible existing-install migration with Copy and Download controls)")
     print(f"Wrote {ORDER_PATH.relative_to(ROOT)} (questions only; no answers)")
-    print("Synchronized embedded question bank and SQL in index.html")
+    print(f"Wrote {SST_TEXT_PATH.relative_to(ROOT)} (questions only; no answers)")
+    print("Validated and embedded 2,040 question-only SST items in index.html")
+    print("Synchronized Q&A bank, SST bank, and SQL in index.html")
 
 
 if __name__ == "__main__":
