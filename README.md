@@ -1,15 +1,15 @@
-# SmartPle Mobile — Student App + Admin Dashboard
+# SmartPle — Student, Admin & Daily Q&A Apps
 
-Two apps, ONE Supabase project (the same one your web app + paywall already uses).
+Three apps, ONE Supabase project (the same one your web app + paywall already uses).
 
 ```
-smartple-mobile/
-├── supabase/
-│   ├── schema.sql        ← run ONCE in the Supabase SQL editor (top to bottom)
-│   └── seed_example.sql  ← example: P4 Math Fractions, all 5 tiers
+(repository root)
+├── .github/workflows/    ← GitHub Actions deployment for the admin dashboard
+├── supabase/             ← database schema, guarded security, and setup SQL
 └── apps/
-    ├── student/          ← Expo (React Native) student app, P4–P7
-    └── admin/            ← secret admin dashboard (React + Vite + Tailwind)
+    ├── student/          ← Expo student app; includes the shared P3–P7 SST bank
+    ├── admin/            ← React + Vite admin dashboard (web)
+    └── daily-qa/         ← Expo daily Q&A companion app
 ```
 
 ## 1. Database (once)
@@ -74,8 +74,9 @@ VITE_SUPABASE_URL=... VITE_SUPABASE_ANON_KEY=... npm run build   # → dist/
 npm run dev                                                      # local dev
 ```
 
-Deploy `dist/` anywhere (Netlify/Vercel/GitHub Pages). Login is **role-gated**:
-`role !== 'admin'` sees nothing but the login screen — students can never get in.
+The repository includes `.github/workflows/deploy-admin-pages.yml`. It builds `apps/admin/` and publishes that dashboard to GitHub Pages on pushes to `main`. For the first deployment, open **Settings → Pages → Build and deployment** and select **GitHub Actions** as the source; then push to `main` or run the workflow manually. After the workflow succeeds, the dashboard is served at `https://sudifenty.github.io/Q-A/`.
+
+This Pages site is the **web admin dashboard only**. The student and Daily Q&A apps are Expo mobile apps; they are started/built from their respective `apps/*` folders, not served from the repository root. Admin login remains **role-gated**: `role !== 'admin'` sees only the login screen.
 
 Pages: **Students** (weakest-subtopic heatmap + skip/anxiety counts) ·
 **Remote Control** (3 toggles + force class/subject/topic/tier + note → Save) ·
