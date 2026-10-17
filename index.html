@@ -113,6 +113,15 @@
       .student-start-btn{min-height:82px;font-size:20px}
       .admin-layout{grid-template-columns:1fr}
     }
+    .student-actions{display:flex;align-items:stretch;gap:12px;width:100%;margin-top:auto}
+    .student-actions .student-back-btn,.student-end-actions .student-back-btn{min-height:60px;padding:14px 16px;border:2px solid #0D6EFD;border-radius:12px;background:#fff;color:#0D6EFD;font-size:16px;font-weight:900;cursor:pointer;touch-action:manipulation;box-shadow:none}.student-actions .student-back-btn{flex:0 0 min(155px,32%);min-width:108px}
+    .student-actions .student-back-btn:disabled{background:#F3F6F8;color:#98A3AD;border-color:#DFE6E9;opacity:1;cursor:not-allowed;box-shadow:none;transform:none}
+    .student-actions .student-next-btn{flex:1;width:auto;min-width:0;min-height:60px;align-self:stretch;margin-top:0;padding:16px 18px}
+    .student-back-btn:focus-visible{outline:4px solid #000;outline-offset:4px}
+    .student-review-note{margin:0;color:#636E72;font-size:12px;font-weight:800;line-height:1.45}
+    .student-end-actions{display:flex;flex-direction:column;gap:12px;width:min(560px,100%)}
+    .student-end-actions .student-back-btn,.student-end-actions .student-state-btn{width:100%;min-height:60px;padding:14px 22px}
+    @media(max-width:600px){.student-actions{gap:8px}.student-actions .student-back-btn{flex-basis:108px;min-width:108px;padding:12px 10px;font-size:14px}.student-actions .student-next-btn{min-height:60px;font-size:18px}}
     @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
 
     .qa-class-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-top:14px}
@@ -316,6 +325,7 @@
     let demoUserId = 'demo-max';
     let currentSet = null;
     let studentStarted = false;
+    let studentPosition = null;
     let adminData = { students: [], settings: [], globalSettings: {target_per_day:20}, classSettings: [], assignments: [], items: [], questions: [] };
     let selectedStudentId = '';
     let adminBusy = false;
@@ -587,14 +597,14 @@
 
     // --------------------------- Student screen ---------------------------
     async function enterDemoStudent(userId='demo-max') {
-      studentStarted=false;
+      studentStarted=false; studentPosition=null;
       mode='demo'; role='student'; demoUserId=userId; activeProfile=DEMO_STUDENTS.find(s=>s.user_id===userId);
       setHeader(true,`${demoName(userId)} · student`); $('switch-view').textContent='Admin preview';
       showView('student-view'); await refreshStudent();
       stopPoll(); poller=setInterval(()=>refreshStudent(true),15000);
     }
     async function enterLiveRole() {
-      if(role==='student') studentStarted=false;
+      if(role==='student') { studentStarted=false; studentPosition=null; }
       setHeader(true,`${activeProfile.display_name || 'Q-A user'} · ${role}`);
       showView(role==='admin'?'admin-view':'student-view');
       if (role==='student') { await refreshStudent(); stopPoll(); poller=setInterval(()=>refreshStudent(true),15000); }
@@ -605,7 +615,13 @@
       try {
         const previousAssignmentId=currentSet?.assignment_id;
         const nextSet=mode==='demo' ? getDemoSet(demoUserId) : await liveGetSet();
-        if(nextSet?.status==='active'&&nextSet.assignment_id!==previousAssignmentId) studentStarted=false;
+        const newActiveSet=nextSet?.status==='active'&&nextSet.assignment_id!==previousAssignmentId;
+        if(newActiveSet) studentStarted=false;
+        if(newActiveSet||studentPosition===null){
+          const items=Array.isArray(nextSet?.items)?nextSet.items:[];
+          const firstPending=items.findIndex(item=>!item.completed_at);
+          studentPosition=firstPending>=0?firstPending:0;
+        }
         currentSet=nextSet;
         renderStudent();
       } catch(e) {
@@ -618,12 +634,15 @@
     function renderStudent() {
       const box=$('student-state');
       const s=currentSet || {status:'paused'};
+      const items=Array.isArray(s.items)?s.items:[];
+      const isComplete=s.status==='complete'||s.status==='completed';
 
-      // Completed/exhausted states do not offer a restart, so questions are never repeated.
-      if (s.status==='complete') {
+      // Review navigation is read-only: revisiting a completed question never clears its studied timestamp.
+      if (isComplete && !studentStarted) {
         const overdue=s.assigned_date && s.assigned_date<localDateKey();
-        box.innerHTML=`<div class="student-end-screen"><h1>✅ SET COMPLETE</h1>${overdue?'<button class="student-state-btn" id="open-today">CONTINUE</button>':''}</div>`;
-        if(overdue) $('open-today').onclick=async()=>{studentStarted=false;await refreshStudent();};
+        box.innerHTML=`<div class="student-end-screen"><h1>✅ SET COMPLETE</h1><div class="student-end-actions">${items.length?'<button class="student-back-btn" id="review-last-question" type="button" aria-label="Go back to the last question without changing studied status">← BACK</button>':''}${overdue?'<button class="student-state-btn" id="open-today" type="button">CONTINUE</button>':''}</div></div>`;
+        if(items.length) $('review-last-question').onclick=()=>{studentStarted=true;studentPosition=items.length-1;renderStudent();};
+        if(overdue) $('open-today').onclick=async()=>{studentStarted=false;studentPosition=null;await refreshStudent();};
         return;
       }
       if (s.status==='exhausted') {
@@ -642,28 +661,50 @@
         return;
       }
 
-      const items=Array.isArray(s.items)?s.items:[];
-      const next=items.find(item=>!item.completed_at);
-      const total=Number(s.target)||items.length;
-      if (!next) {
-        box.innerHTML='<div class="student-end-screen"><h1>✅ SET COMPLETE</h1></div>';
+      if (!items.length) {
+        box.innerHTML='<div class="student-end-screen"><h1>NO QUESTIONS AVAILABLE</h1></div>';
         return;
       }
+      let currentIndex=Number.isInteger(studentPosition)?studentPosition:items.findIndex(item=>!item.completed_at);
+      if(currentIndex<0)currentIndex=0;
+      if(currentIndex>=items.length){
+        const firstPending=items.findIndex(item=>!item.completed_at);
+        if(firstPending>=0)currentIndex=firstPending;
+        else {studentStarted=false;renderStudent();return;}
+      }
+      studentPosition=currentIndex;
+      const next=items[currentIndex];
+      const alreadyStudied=!!next.completed_at;
+      const total=Number(s.target)||items.length;
       const setNumber=Number(s.set_number)||0;
       const setKind=s.assignment_type==='admin_repeat'?` · REPEAT OF SET ${Number(s.source_set_number)||''}`:s.assignment_type==='admin_new'?' · ADMIN ASSIGNED':'';
       const setPrefix=setNumber?`Set ${setNumber}${setKind} · `:'';
       const questionOrigin=`${classLabel(next.grade||'P4')} · Science${next.topic?` · ${next.topic}`:''}`;
       box.innerHTML=`<div class="student-question-screen">
-        <p class="student-progress">${setPrefix}Question ${Number(next.position)||1} of ${total}</p>
+        <p class="student-progress">${setPrefix}Question ${Number(next.position)||currentIndex+1} of ${total}</p>
+        ${alreadyStudied?'<p class="student-review-note">Already studied · reviewing will not change saved progress.</p>':''}
         <p class="student-question-origin">${escapeHtml(questionOrigin)}</p>
         <h1 class="student-question-text">${escapeHtml(next.question)}</h1>
         <p class="student-answer-text">${escapeHtml(next.answer)}</p>
-        <button class="student-next-btn" id="mark-studied" type="button" aria-label="Mark this question as studied and continue">NEXT</button>
+        <div class="student-actions"><button class="student-back-btn" id="previous-question" type="button" aria-label="Go to the previous question without changing studied status" ${currentIndex===0?'disabled':''}>← BACK</button><button class="student-next-btn" id="mark-studied" type="button" aria-label="${alreadyStudied?'Move to the next question; studied status will not change':'Mark this question as studied and continue'}">NEXT</button></div>
       </div>`;
+      $('previous-question').onclick=()=>{
+        if(currentIndex>0){studentPosition=currentIndex-1;renderStudent();}
+      };
       $('mark-studied').onclick=async()=>{
-        const button=$('mark-studied');button.disabled=true;button.textContent='SAVING…';
+        const button=$('mark-studied');
+        if(alreadyStudied){
+          studentPosition=currentIndex+1;
+          if(isComplete&&studentPosition>=items.length)studentStarted=false;
+          renderStudent();return;
+        }
+        button.disabled=true;button.textContent='SAVING…';
         try {
           currentSet=mode==='demo'?markDemoItem(demoUserId,next.question_id):await liveMark(s.assignment_id,next.question_id);
+          if(currentSet?.status==='complete'||currentSet?.status==='completed'){
+            studentPosition=Array.isArray(currentSet.items)?currentSet.items.length:items.length;
+            studentStarted=false;
+          }else studentPosition=currentIndex+1;
           renderStudent();
         } catch(e) {
           button.disabled=false;button.textContent='NEXT';
