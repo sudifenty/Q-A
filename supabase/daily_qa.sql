@@ -1,69 +1,10 @@
--- Daily Q&A backend for the learner app and its built-in Admin Preview.
--- Schema source for setup_shared_project.sql, the normal one-file setup (which
--- appends all seed rows). If applying this source alone, run seed_daily_qa.sql
--- afterwards. Existing Auth users are shared.
--- Q&A tables/functions use the daily_qa_ prefix. This migration does not create
--- Auth users/passwords or replace the student app's existing Auth trigger.
--- Preflight before creating anything: stop if this is not the SmartPle project.
-do $$
-begin
-  if to_regclass('public.smartple_profiles') is null then
-    raise exception 'Expected public.smartple_profiles from the student app; stopped before applying the Q-A migration.';
-  end if;
-  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='smartple_profiles' and column_name='user_id')
-     or not exists (select 1 from information_schema.columns where table_schema='public' and table_name='smartple_profiles' and column_name='display_name')
-     or not exists (select 1 from information_schema.columns where table_schema='public' and table_name='smartple_profiles' and column_name='class')
-     or not exists (select 1 from information_schema.columns where table_schema='public' and table_name='smartple_profiles' and column_name='role') then
-    raise exception 'smartple_profiles must have user_id, display_name, class, and role columns; stopped before applying the Q-A migration.';
-  end if;
-end;
-$$;
+-- Daily Q&A revision: additive tables/functions for the separate learner app.
+-- Run after the main SmartPle schema in the EXISTING shared Supabase project.
+-- This does not alter the existing questions/attempts tables.
 
 create extension if not exists pgcrypto;
 
--- The existing SmartPle project owns Auth and public.smartple_profiles. Q-A
--- mirrors the existing user_id/class/name/role into a read-only Q-A profile map;
--- it does not create Auth users or store credentials.
-create table if not exists public.daily_qa_profiles (
-  user_id uuid primary key references auth.users(id) on delete cascade,
-  display_name text not null default 'Student',
-  class text not null default 'P4' check (class in ('P4','P5','P6','P7')),
-  role text not null default 'student' check (role in ('student','admin')),
-  synced_at timestamptz not null default now()
-);
-
--- Import current student/admin profiles that are linked to a real Auth user.
--- Legacy rows with NULL or nonmatching user_id stay untouched in
--- smartple_profiles and are skipped until linked to a real Auth user.
--- Safe to rerun; linked profile updates refresh the Q-A mapping.
-insert into public.daily_qa_profiles (user_id, display_name, class, role)
-select
-  p.user_id,
-  coalesce(nullif(btrim(p.display_name), ''), 'Student'),
-  case when p.class in ('P4','P5','P6','P7') then p.class else 'P4' end,
-  case when p.role = 'admin' then 'admin' else 'student' end
-from public.smartple_profiles p
-where p.role in ('student','admin')
-  and p.user_id is not null
-  and exists (select 1 from auth.users u where u.id = p.user_id)
-on conflict (user_id) do update
-set display_name = excluded.display_name,
-    class = excluded.class,
-    role = excluded.role,
-    synced_at = now();
-
--- Profile sync uses current-user/admin-gated RPCs below; this migration adds
--- no trigger to the existing SmartPle profile or Auth tables.
-
--- Q&A admin access has its own SQL-managed allowlist; client roles cannot edit it.
-create table if not exists public.daily_qa_admins (
-  user_id uuid primary key references auth.users(id) on delete cascade,
-  authorized_at timestamptz not null default now()
-);
-alter table public.daily_qa_admins enable row level security;
-revoke all on public.daily_qa_admins from public, anon, authenticated;
-
--- Imported grade-tagged Science Q&A; every learner follows a shared P4→P5→P6→P7 sequence.
+-- Q&A records imported from the guide. Question text and answer are displayed together.
 create table if not exists public.daily_qa_questions (
   id text primary key,
   grade text not null check (grade in ('P4','P5','P6','P7')),
@@ -80,34 +21,20 @@ create table if not exists public.daily_qa_questions (
 create index if not exists daily_qa_question_bank_idx
   on public.daily_qa_questions (grade, subject, is_active, sort_order);
 
--- Limit inheritance: student override > class rule > global fallback (20 by default).
--- A value of 0 means paused. A NULL student override means inherit.
-create table if not exists public.daily_qa_global_settings (
-  id boolean primary key default true check (id = true),
-  target_per_day integer not null default 20 check (target_per_day between 0 and 500),
-  updated_by uuid references auth.users(id),
-  updated_at timestamptz not null default now()
-);
-insert into public.daily_qa_global_settings (id, target_per_day)
-values (true, 20)
-on conflict (id) do nothing;
-
-create table if not exists public.daily_qa_class_settings (
-  class_name text primary key check (class_name in ('P4','P5','P6','P7')),
-  target_per_day integer not null check (target_per_day between 0 and 500),
-  updated_by uuid references auth.users(id),
-  updated_at timestamptz not null default now()
-);
-
+-- Per-student admin controls. Changes to target apply to the next set;
+-- an already-started set retains its original target.
 create table if not exists public.daily_qa_settings (
   user_id uuid primary key references auth.users(id) on delete cascade,
-  target_per_day integer check (target_per_day is null or target_per_day between 0 and 500),
+  enabled boolean not null default false,
+  target_per_day integer not null default 20 check (target_per_day between 1 and 500),
+  grade text not null default 'P4' check (grade in ('P4','P5','P6','P7')),
+  subject text not null default 'Science',
   updated_by uuid references auth.users(id),
   updated_at timestamptz not null default now()
 );
 
--- One active set per learner. A set keeps its original target if an admin edits
--- a limit while it is in progress; the new effective limit applies to the next set.
+-- One set per student at a time. The active set is resumed across days;
+-- a new set is made only after the active set has been cleared.
 create table if not exists public.daily_qa_assignments (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -117,9 +44,6 @@ create table if not exists public.daily_qa_assignments (
   target_count integer not null check (target_count between 1 and 500),
   completed_count integer not null default 0 check (completed_count between 0 and 500),
   status text not null default 'active' check (status in ('active','completed')),
-  assignment_type text not null default 'daily' check (assignment_type in ('daily','admin_new','admin_repeat')),
-  source_assignment_id uuid references public.daily_qa_assignments(id) on delete set null,
-  assigned_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
   completed_at timestamptz,
   unique (user_id, set_number)
@@ -129,6 +53,7 @@ create index if not exists daily_qa_assignment_user_idx
 create unique index if not exists daily_qa_one_active_set_per_student_idx
   on public.daily_qa_assignments (user_id) where status = 'active';
 
+-- Snapshot of the assigned question order, plus a server timestamp when studied.
 create table if not exists public.daily_qa_assignment_items (
   assignment_id uuid not null references public.daily_qa_assignments(id) on delete cascade,
   question_id text not null references public.daily_qa_questions(id) on delete restrict,
@@ -140,142 +65,31 @@ create table if not exists public.daily_qa_assignment_items (
 create index if not exists daily_qa_items_assignment_idx
   on public.daily_qa_assignment_items (assignment_id, position);
 
--- Q&A admin authority requires a SQL-managed allowlist entry and an existing
--- SmartPle admin profile. Clients cannot read or modify daily_qa_admins.
+-- Admin gate uses the same profile role as the existing admin dashboard.
 create or replace function public.daily_qa_is_admin()
 returns boolean
 language sql stable security definer
 set search_path = public
 as $$
   select exists (
-    select 1
-    from public.daily_qa_admins a
-    join public.daily_qa_profiles p on p.user_id = a.user_id
-    join public.smartple_profiles s on s.user_id = a.user_id
-    where a.user_id = auth.uid() and p.role = 'admin' and s.role = 'admin'
+    select 1 from public.smartple_profiles
+    where user_id = auth.uid() and role = 'admin'
   );
 $$;
 revoke all on function public.daily_qa_is_admin() from public, anon;
 grant execute on function public.daily_qa_is_admin() to authenticated;
 
--- Sync only the caller's SmartPle profile after sign-in. It cannot write another
--- user's Q-A profile, and the Q-A mapping table remains read-only to clients.
-create or replace function public.daily_qa_sync_my_profile()
-returns void
-language plpgsql security definer
-set search_path = public
-as $$
-declare
-  v_user uuid := auth.uid();
-  v_profile public.smartple_profiles%rowtype;
-begin
-  if v_user is null then
-    raise exception using errcode = '28000', message = 'Sign in is required.';
-  end if;
-  select * into v_profile from public.smartple_profiles where user_id = v_user;
-  if not found or v_profile.role not in ('student','admin') then
-    raise exception using errcode = '42501', message = 'A valid SmartPle profile is required.';
-  end if;
-  insert into public.daily_qa_profiles (user_id, display_name, class, role, synced_at)
-  values (
-    v_user,
-    coalesce(nullif(btrim(v_profile.display_name), ''), 'Student'),
-    case when v_profile.class in ('P4','P5','P6','P7') then v_profile.class else 'P4' end,
-    v_profile.role,
-    now()
-  )
-  on conflict (user_id) do update
-  set display_name = excluded.display_name,
-      class = excluded.class,
-      role = excluded.role,
-      synced_at = now();
-end;
-$$;
-revoke all on function public.daily_qa_sync_my_profile() from public, anon;
-grant execute on function public.daily_qa_sync_my_profile() to authenticated;
-
--- Admin-only roster sync imports students who were added since the initial
--- backfill. Admin authorization uses the protected daily_qa_admins allowlist.
-create or replace function public.daily_qa_sync_profiles()
-returns void
-language plpgsql security definer
-set search_path = public
-as $$
-begin
-  if not public.daily_qa_is_admin() then
-    raise exception using errcode = '42501', message = 'Q-A administrator access is required.';
-  end if;
-  insert into public.daily_qa_profiles (user_id, display_name, class, role, synced_at)
-  select
-    p.user_id,
-    coalesce(nullif(btrim(p.display_name), ''), 'Student'),
-    case when p.class in ('P4','P5','P6','P7') then p.class else 'P4' end,
-    p.role,
-    now()
-  from public.smartple_profiles p
-  where p.role in ('student','admin')
-    and p.user_id is not null
-    and exists (select 1 from auth.users u where u.id = p.user_id)
-  on conflict (user_id) do update
-  set display_name = excluded.display_name,
-      class = excluded.class,
-      role = excluded.role,
-      synced_at = now();
-end;
-$$;
-revoke all on function public.daily_qa_sync_profiles() from public, anon;
-grant execute on function public.daily_qa_sync_profiles() to authenticated;
-
--- Resolve the signed-in student's effective daily target. Internal helper only.
-create or replace function public.daily_qa_effective_target()
-returns integer
-language sql stable security definer
-set search_path = public
-as $$
-  select coalesce(
-    (select s.target_per_day from public.daily_qa_settings s where s.user_id = auth.uid()),
-    (select c.target_per_day
-       from public.daily_qa_profiles p
-       join public.daily_qa_class_settings c on c.class_name = p.class
-      where p.user_id = auth.uid()),
-    (select g.target_per_day from public.daily_qa_global_settings g where g.id = true),
-    20
-  );
-$$;
-revoke all on function public.daily_qa_effective_target() from public, anon, authenticated;
-
--- RLS and least-privilege grants apply only to Q-A tables. The existing
--- SmartPle profile table, its grants, policies, and Auth trigger are not altered.
-alter table public.daily_qa_profiles enable row level security;
 alter table public.daily_qa_questions enable row level security;
-alter table public.daily_qa_global_settings enable row level security;
-alter table public.daily_qa_class_settings enable row level security;
 alter table public.daily_qa_settings enable row level security;
 alter table public.daily_qa_assignments enable row level security;
 alter table public.daily_qa_assignment_items enable row level security;
 
-revoke all on public.daily_qa_profiles from public, anon, authenticated;
-revoke all on public.daily_qa_questions from public, anon, authenticated;
-revoke all on public.daily_qa_global_settings from public, anon, authenticated;
-revoke all on public.daily_qa_class_settings from public, anon, authenticated;
-revoke all on public.daily_qa_settings from public, anon, authenticated;
-revoke all on public.daily_qa_assignments from public, anon, authenticated;
-revoke all on public.daily_qa_assignment_items from public, anon, authenticated;
-
-grant select on public.daily_qa_profiles to authenticated;
-grant select on public.daily_qa_questions to authenticated;
-grant select, insert, update, delete on public.daily_qa_global_settings to authenticated;
-grant select, insert, update, delete on public.daily_qa_class_settings to authenticated;
+grant select, insert, update, delete on public.daily_qa_questions to authenticated;
 grant select, insert, update, delete on public.daily_qa_settings to authenticated;
 grant select on public.daily_qa_assignments to authenticated;
 grant select on public.daily_qa_assignment_items to authenticated;
 
--- Q-A profiles are read-only to clients: learners read self, Q-A admins read all.
-drop policy if exists daily_qa_profiles_self_or_admin_read on public.daily_qa_profiles;
-create policy daily_qa_profiles_self_or_admin_read on public.daily_qa_profiles
-  for select to authenticated using (user_id = auth.uid() or public.daily_qa_is_admin());
-
--- Question bank is readable to signed-in users; only admins manage it.
+-- Signed-in learners can read the guide. Only admins can manage its content.
 drop policy if exists daily_qa_questions_read on public.daily_qa_questions;
 create policy daily_qa_questions_read on public.daily_qa_questions
   for select to authenticated using (is_active or public.daily_qa_is_admin());
@@ -284,33 +98,16 @@ create policy daily_qa_questions_admin on public.daily_qa_questions
   for all to authenticated using (public.daily_qa_is_admin())
   with check (public.daily_qa_is_admin());
 
--- All signed-in users can read shared global/class defaults; only admins can change them.
-drop policy if exists daily_qa_global_settings_read on public.daily_qa_global_settings;
-create policy daily_qa_global_settings_read on public.daily_qa_global_settings
-  for select to authenticated using (true);
-drop policy if exists daily_qa_global_settings_admin on public.daily_qa_global_settings;
-create policy daily_qa_global_settings_admin on public.daily_qa_global_settings
-  for all to authenticated using (public.daily_qa_is_admin())
-  with check (public.daily_qa_is_admin());
-
-drop policy if exists daily_qa_class_settings_read on public.daily_qa_class_settings;
-create policy daily_qa_class_settings_read on public.daily_qa_class_settings
-  for select to authenticated using (true);
-drop policy if exists daily_qa_class_settings_admin on public.daily_qa_class_settings;
-create policy daily_qa_class_settings_admin on public.daily_qa_class_settings
-  for all to authenticated using (public.daily_qa_is_admin())
-  with check (public.daily_qa_is_admin());
-
--- Students can read only their own personal override; admins can read/write all.
+-- A learner can read only their own daily settings; admins can read/write all.
 drop policy if exists daily_qa_settings_self_read on public.daily_qa_settings;
 create policy daily_qa_settings_self_read on public.daily_qa_settings
   for select to authenticated using (user_id = auth.uid() or public.daily_qa_is_admin());
-drop policy if exists daily_qa_settings_admin on public.daily_qa_settings;
-create policy daily_qa_settings_admin on public.daily_qa_settings
+drop policy if exists daily_qa_settings_admin_write on public.daily_qa_settings;
+create policy daily_qa_settings_admin_write on public.daily_qa_settings
   for all to authenticated using (public.daily_qa_is_admin())
   with check (public.daily_qa_is_admin());
 
--- Learners can read only their own progress; admins can read/manage all progress.
+-- Progress rows are read-only from clients; the completion RPC writes them.
 drop policy if exists daily_qa_assignments_self_read on public.daily_qa_assignments;
 create policy daily_qa_assignments_self_read on public.daily_qa_assignments
   for select to authenticated using (user_id = auth.uid() or public.daily_qa_is_admin());
@@ -332,7 +129,8 @@ create policy daily_qa_items_admin_all on public.daily_qa_assignment_items
   for all to authenticated using (public.daily_qa_is_admin())
   with check (public.daily_qa_is_admin());
 
--- Internal helper returns a set in question order. Clients call only checked RPCs.
+-- Return a payload containing one set's items, in order. Internal helper:
+-- direct execution is revoked below; learner access is through the checked RPCs.
 create or replace function public.daily_qa_assignment_payload(p_assignment_id uuid, p_status text default null)
 returns jsonb
 language sql stable security definer
@@ -346,9 +144,6 @@ as $$
     'target', a.target_count,
     'requested_target', a.requested_target,
     'completed_count', a.completed_count,
-    'assignment_type', a.assignment_type,
-    'source_assignment_id', a.source_assignment_id,
-    'source_set_number', (select source.set_number from public.daily_qa_assignments source where source.id = a.source_assignment_id),
     'items', coalesce((
       select jsonb_agg(jsonb_build_object(
         'question_id', q.id,
@@ -370,6 +165,9 @@ as $$
 $$;
 revoke all on function public.daily_qa_assignment_payload(uuid, text) from public, anon, authenticated;
 
+-- Get the active set or make today's set, serializing concurrent app opens.
+-- If a student is behind, the same active set is returned until it is complete.
+-- After a set is finished, no further set is generated on that same calendar day.
 create or replace function public.daily_qa_get_or_start_set()
 returns jsonb
 language plpgsql security definer
@@ -377,10 +175,8 @@ set search_path = public
 as $$
 declare
   v_user uuid := auth.uid();
-  v_today date := (now() at time zone 'Africa/Kampala')::date;
-  v_target integer;
-  v_subject text := 'Science';
-  v_profile public.daily_qa_profiles%rowtype;
+  v_today date := (now() at time zone 'Africa/Nairobi')::date;
+  v_setting public.daily_qa_settings%rowtype;
   v_assignment public.daily_qa_assignments%rowtype;
   v_available integer := 0;
   v_take integer := 0;
@@ -390,17 +186,22 @@ begin
     raise exception using errcode = '28000', message = 'Sign in is required.';
   end if;
 
-  perform public.daily_qa_sync_my_profile();
-  select * into v_profile from public.daily_qa_profiles where user_id = v_user;
-  if not found or v_profile.role <> 'student' then
-    raise exception using errcode = '42501', message = 'A student profile is required.';
-  end if;
+  select * into v_setting
+  from public.daily_qa_settings
+  where user_id = v_user;
 
-  v_target := public.daily_qa_effective_target();
-  if v_target = 0 then
+  if not found then
     return jsonb_build_object(
-      'status', 'paused', 'target', 0,
-      'message', 'Daily Q&A is paused by your admin.'
+      'status', 'paused',
+      'target', 20,
+      'message', 'Daily Q&A is not currently enabled by your admin.'
+    );
+  end if;
+  if not v_setting.enabled then
+    return jsonb_build_object(
+      'status', 'paused',
+      'target', v_setting.target_per_day,
+      'message', 'Daily Q&A is not currently enabled by your admin.'
     );
   end if;
 
@@ -413,62 +214,72 @@ begin
   order by set_number desc
   limit 1
   for update;
+
   if found then
     return public.daily_qa_assignment_payload(v_assignment.id, 'active');
   end if;
 
-  -- A completed set counts for its assigned day. Never stack another set that day.
+  -- A completed set counts for its assigned day. Do not create a second set
+  -- for the same student on that day, even if it was completed early.
   select * into v_assignment
   from public.daily_qa_assignments
   where user_id = v_user
   order by set_number desc
   limit 1;
+
   if found and v_assignment.status = 'completed' and v_assignment.assigned_date >= v_today then
     return public.daily_qa_assignment_payload(v_assignment.id, 'complete');
   end if;
 
-  -- Do not repeat a question for the same learner.
+  -- Never reuse a question for the same student. Stop cleanly when the bank is exhausted.
   select count(*) into v_available
   from public.daily_qa_questions q
-  where q.is_active and q.grade in ('P4','P5','P6','P7') and q.subject = v_subject
+  where q.is_active
+    and q.grade = v_setting.grade
+    and q.subject = v_setting.subject
     and not exists (
-      select 1 from public.daily_qa_assignment_items i
+      select 1
+      from public.daily_qa_assignment_items i
       join public.daily_qa_assignments a on a.id = i.assignment_id
       where a.user_id = v_user and i.question_id = q.id
     );
 
   if v_available = 0 then
     return jsonb_build_object(
-      'status', 'exhausted', 'target', v_target, 'grade_order', 'P4-P7', 'subject', v_subject,
-      'message', 'The shared P4-P7 question sequence is exhausted or not yet available.'
+      'status', 'exhausted',
+      'target', v_setting.target_per_day,
+      'grade', v_setting.grade,
+      'subject', v_setting.subject,
+      'message', 'The question bank is exhausted. Ask your admin to add more Q&A items.'
     );
   end if;
 
-  v_take := least(v_target, v_available);
+  v_take := least(v_setting.target_per_day, v_available);
   select coalesce(max(set_number), 0) + 1 into v_set_number
   from public.daily_qa_assignments where user_id = v_user;
 
   insert into public.daily_qa_assignments (
     user_id, set_number, assigned_date, requested_target, target_count, status
-  ) values (v_user, v_set_number, v_today, v_target, v_take, 'active')
-  returning * into v_assignment;
+  ) values (
+    v_user, v_set_number, v_today, v_setting.target_per_day, v_take, 'active'
+  ) returning * into v_assignment;
 
   insert into public.daily_qa_assignment_items (assignment_id, question_id, position)
   select v_assignment.id, selected.id,
-         row_number() over (
-           order by case selected.grade when 'P4' then 1 when 'P5' then 2 when 'P6' then 3 when 'P7' then 4 end,
-                    selected.sort_order, selected.id
-         )::integer
+         row_number() over (order by selected.sort_order, selected.id)::integer
   from (
-    select q.id, q.grade, q.sort_order from public.daily_qa_questions q
-    where q.is_active and q.grade in ('P4','P5','P6','P7') and q.subject = v_subject
+    select q.id, q.sort_order
+    from public.daily_qa_questions q
+    where q.is_active
+      and q.grade = v_setting.grade
+      and q.subject = v_setting.subject
       and not exists (
-        select 1 from public.daily_qa_assignment_items i
+        select 1
+        from public.daily_qa_assignment_items i
         join public.daily_qa_assignments a on a.id = i.assignment_id
         where a.user_id = v_user and i.question_id = q.id
       )
-    order by case q.grade when 'P4' then 1 when 'P5' then 2 when 'P6' then 3 when 'P7' then 4 end,
-             q.sort_order, q.id
+    order by q.sort_order, q.id
     limit v_take
   ) as selected;
 
@@ -476,184 +287,30 @@ begin
 end;
 $$;
 
--- Admin can assign one additional set after the learner's latest set is complete.
--- A source assignment repeats that completed set; NULL means next unused questions
--- from the shared sequence (P4 first, followed by P5, P6, and P7) for every learner.
-create or replace function public.daily_qa_admin_assign_set(
-  p_user_id uuid,
-  p_source_assignment_id uuid default null
+-- Mark one assigned item as studied. Idempotent: repeated taps never add twice.
+-- When every item is marked, the set completion timestamp is written in the same transaction.
+create or replace function public.daily_qa_complete_item(
+  p_assignment_id uuid,
+  p_question_id text
 )
 returns jsonb
 language plpgsql security definer
 set search_path = public
 as $$
 declare
-  v_admin uuid := auth.uid();
-  v_today date := (now() at time zone 'Africa/Kampala')::date;
-  v_profile public.daily_qa_profiles%rowtype;
-  v_latest public.daily_qa_assignments%rowtype;
-  v_source public.daily_qa_assignments%rowtype;
-  v_assignment public.daily_qa_assignments%rowtype;
-  v_subject text := 'Science';
-  v_target integer;
-  v_available integer := 0;
-  v_take integer := 0;
-  v_set_number integer := 1;
-begin
-  if v_admin is null then
-    raise exception using errcode = '28000', message = 'Sign in is required.';
-  end if;
-  if not public.daily_qa_is_admin() then
-    raise exception using errcode = '42501', message = 'Q-A administrator access is required.';
-  end if;
-  if p_user_id is null then
-    raise exception using errcode = '22023', message = 'Choose a student first.';
-  end if;
-
-  -- Require a current student role in both the Q-A map and SmartPle source.
-  select p.* into v_profile
-  from public.daily_qa_profiles p
-  join public.smartple_profiles s on s.user_id = p.user_id
-  where p.user_id = p_user_id and p.role = 'student' and s.role = 'student';
-  if not found then
-    raise exception using errcode = '42501', message = 'A current SmartPle student profile is required.';
-  end if;
-
-  -- Resolve the selected student's target (not the signed-in admin's target).
-  select coalesce(
-    (select s.target_per_day from public.daily_qa_settings s where s.user_id = p_user_id),
-    (select c.target_per_day
-       from public.daily_qa_profiles p
-       join public.daily_qa_class_settings c on c.class_name = p.class
-      where p.user_id = p_user_id),
-    (select g.target_per_day from public.daily_qa_global_settings g where g.id = true),
-    20
-  ) into v_target;
-  if v_target <= 0 then
-    raise exception using errcode = '42501', message = 'This student is paused. Set a positive student, class, or global target before assigning another set.';
-  end if;
-
-  -- Serialize against the learner's get-or-start RPC and other admin actions.
-  perform pg_advisory_xact_lock(hashtext(p_user_id::text));
-  if exists (
-    select 1 from public.daily_qa_assignments a
-    where a.user_id = p_user_id and a.status = 'active'
-  ) then
-    raise exception using errcode = '55000', message = 'The student still has an active set. Assign another set after it is complete.';
-  end if;
-
-  select * into v_latest
-  from public.daily_qa_assignments a
-  where a.user_id = p_user_id
-  order by a.set_number desc
-  limit 1
-  for update;
-  if not found or v_latest.status <> 'completed' then
-    raise exception using errcode = '55000', message = 'The student must finish their current set before another can be assigned.';
-  end if;
-
-  select coalesce(max(a.set_number), 0) + 1 into v_set_number
-  from public.daily_qa_assignments a
-  where a.user_id = p_user_id;
-
-  if p_source_assignment_id is not null then
-    select * into v_source
-    from public.daily_qa_assignments a
-    where a.id = p_source_assignment_id
-      and a.user_id = p_user_id
-      and a.status = 'completed'
-    for update;
-    if not found then
-      raise exception using errcode = '22023', message = 'Choose one of this student’s completed sets to repeat.';
-    end if;
-
-    select count(*)::integer into v_take
-    from public.daily_qa_assignment_items i
-    where i.assignment_id = v_source.id;
-    if v_take = 0 then
-      raise exception using errcode = '22023', message = 'The selected completed set has no questions to repeat.';
-    end if;
-    if exists (
-      select 1
-      from public.daily_qa_assignment_items i
-      join public.daily_qa_questions q on q.id = i.question_id
-      where i.assignment_id = v_source.id
-        and (q.grade not in ('P4','P5','P6','P7') or q.subject <> v_subject)
-    ) then
-      raise exception using errcode = '22023', message = 'The selected set contains questions outside the shared P4-P7 Science bank.';
-    end if;
-
-    insert into public.daily_qa_assignments (
-      user_id, set_number, assigned_date, requested_target, target_count,
-      completed_count, status, assignment_type, source_assignment_id, assigned_by
-    ) values (
-      p_user_id, v_set_number, v_today, v_source.requested_target, v_take,
-      0, 'active', 'admin_repeat', v_source.id, v_admin
-    ) returning * into v_assignment;
-
-    insert into public.daily_qa_assignment_items (assignment_id, question_id, position)
-    select v_assignment.id, i.question_id, i.position
-    from public.daily_qa_assignment_items i
-    where i.assignment_id = v_source.id
-    order by i.position;
-  else
-    select count(*)::integer into v_available
-    from public.daily_qa_questions q
-    where q.is_active and q.grade in ('P4','P5','P6','P7') and q.subject = v_subject
-      and not exists (
-        select 1 from public.daily_qa_assignment_items i
-        join public.daily_qa_assignments a on a.id = i.assignment_id
-        where a.user_id = p_user_id and i.question_id = q.id
-      );
-    if v_available = 0 then
-      raise exception using errcode = '22023', message = 'No unused questions remain in the shared P4-P7 sequence.';
-    end if;
-
-    v_take := least(v_target, v_available);
-    insert into public.daily_qa_assignments (
-      user_id, set_number, assigned_date, requested_target, target_count,
-      completed_count, status, assignment_type, source_assignment_id, assigned_by
-    ) values (
-      p_user_id, v_set_number, v_today, v_target, v_take,
-      0, 'active', 'admin_new', null, v_admin
-    ) returning * into v_assignment;
-
-    insert into public.daily_qa_assignment_items (assignment_id, question_id, position)
-    select v_assignment.id, selected.id,
-           row_number() over (order by case selected.grade when 'P4' then 1 when 'P5' then 2 when 'P6' then 3 when 'P7' then 4 end, selected.sort_order, selected.id)::integer
-    from (
-      select q.id, q.grade, q.sort_order
-      from public.daily_qa_questions q
-      where q.is_active and q.grade in ('P4','P5','P6','P7') and q.subject = v_subject
-        and not exists (
-          select 1 from public.daily_qa_assignment_items i
-          join public.daily_qa_assignments a on a.id = i.assignment_id
-          where a.user_id = p_user_id and i.question_id = q.id
-        )
-      order by case q.grade when 'P4' then 1 when 'P5' then 2 when 'P6' then 3 when 'P7' then 4 end,
-               q.sort_order, q.id
-      limit v_take
-    ) as selected;
-  end if;
-
-  return public.daily_qa_assignment_payload(v_assignment.id, 'active');
-end;
-$$;
-
-create or replace function public.daily_qa_complete_item(p_assignment_id uuid, p_question_id text)
-returns jsonb
-language plpgsql security definer
-set search_path = public
-as $$
-declare
   v_user uuid := auth.uid();
+  v_enabled boolean;
   v_assignment public.daily_qa_assignments%rowtype;
   v_done integer;
 begin
   if v_user is null then
     raise exception using errcode = '28000', message = 'Sign in is required.';
   end if;
-  if public.daily_qa_effective_target() = 0 then
+
+  select enabled into v_enabled
+  from public.daily_qa_settings
+  where user_id = v_user;
+  if coalesce(v_enabled, false) = false then
     raise exception using errcode = '42501', message = 'Daily Q&A is paused by your admin.';
   end if;
 
@@ -672,14 +329,17 @@ begin
     raise exception using errcode = 'P0002', message = 'Question does not belong to this set.';
   end if;
 
-  select (count(*) filter (where completed_at is not null))::integer into v_done
-  from public.daily_qa_assignment_items where assignment_id = p_assignment_id;
+  select (count(*) filter (where completed_at is not null))::integer
+  into v_done
+  from public.daily_qa_assignment_items
+  where assignment_id = p_assignment_id;
 
   update public.daily_qa_assignments
   set completed_count = v_done,
       status = case when v_done >= target_count then 'completed' else 'active' end,
       completed_at = case when v_done >= target_count then coalesce(completed_at, now()) else null end
-  where id = p_assignment_id returning * into v_assignment;
+  where id = p_assignment_id
+  returning * into v_assignment;
 
   return public.daily_qa_assignment_payload(
     p_assignment_id,
@@ -689,15 +349,9 @@ end;
 $$;
 
 revoke all on function public.daily_qa_get_or_start_set() from public, anon;
-revoke all on function public.daily_qa_admin_assign_set(uuid, uuid) from public, anon;
 revoke all on function public.daily_qa_complete_item(uuid, text) from public, anon;
 grant execute on function public.daily_qa_get_or_start_set() to authenticated;
-grant execute on function public.daily_qa_admin_assign_set(uuid, uuid) to authenticated;
 grant execute on function public.daily_qa_complete_item(uuid, text) to authenticated;
 
--- Existing SmartPle Auth accounts are reused; no duplicate Q&A account is needed.
--- Fresh installs include the shared P4-to-P7 sequence and admin set assignment.
--- On an already-installed project, apply the refreshed assign_student_sets.sql
--- migration to update the shared sequence and assignment feature.
--- After setup/feature update, run authorize_qa_admin.sql, review and apply the
--- separate secure_smartple_profiles.sql patch, and then verify_daily_qa.sql.
+-- Basic verification after applying both SQL files:
+-- select grade, subject, count(*) from public.daily_qa_questions group by grade, subject;

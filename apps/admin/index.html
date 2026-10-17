@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#e0eae9" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b1416" media="(prefers-color-scheme: dark)" />
+    <title>SmartPle Admin</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
+    <!-- Set the theme before the first paint, so a dark-mode user never sees a
+         white flash. Kept inline and dependency-free on purpose. -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('sp-theme');
+          var dark = stored ? stored === 'dark'
+                            : window.matchMedia('(prefers-color-scheme: dark)').matches;
+          document.documentElement.classList.toggle('dark', dark);
+        } catch (e) { /* private mode — fall back to light */ }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
