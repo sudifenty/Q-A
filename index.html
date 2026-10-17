@@ -184,6 +184,26 @@
     .qa-set-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
     .qa-set-actions .btn{flex:1}
     .qa-set-note{display:block;margin-top:8px;color:#718078;font-size:10px;line-height:1.5}
+    .qa-full-bank-panel{margin-top:14px}
+    .qa-full-bank-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;list-style:none}
+    .qa-full-bank-summary::-webkit-details-marker{display:none}
+    .qa-full-bank-summary h3{margin:2px 0 3px;font-size:17px;letter-spacing:-.03em}
+    .qa-full-bank-summary p{margin:0;color:#7c8981;font-size:10px;line-height:1.45}
+    .qa-full-bank-body{margin-top:14px}
+    .qa-bank-controls{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(170px,1fr);gap:8px;margin-bottom:8px}
+    .qa-bank-controls .search{margin:0}
+    .qa-bank-controls select{width:100%;border:1px solid #dce6dc;border-radius:10px;padding:10px 11px;color:#293b30;background:#fcfdfb;font-size:12px}
+    .qa-bank-toolbar{display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap;margin:8px 0;color:#718078;font-size:10px}
+    .qa-bank-list{display:grid;gap:6px;max-height:70vh;overflow:auto;padding:2px 4px 2px 0}
+    .qa-bank-row{border:1px solid #e4ebe4;border-radius:11px;background:#fff}
+    .qa-bank-row>summary{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 11px;cursor:pointer;list-style:none}
+    .qa-bank-row>summary::-webkit-details-marker{display:none}
+    .qa-bank-row-title{min-width:0;display:grid;gap:3px}
+    .qa-bank-row-title b{font-size:11px;color:#304238}
+    .qa-bank-row-title small{font-size:9px;color:#87948c}
+    .qa-bank-answer{padding:0 12px 12px;border-top:1px solid #edf1ec;color:#495950;font-size:11px;line-height:1.55}
+    .qa-bank-answer p{margin:9px 0 0}
+    @media(max-width:560px){.qa-bank-controls{grid-template-columns:1fr}.qa-full-bank-summary{align-items:flex-start;flex-direction:column}.qa-bank-toolbar{align-items:flex-start}}
     @media(max-width:700px){.admin-stats-grid{grid-template-columns:1fr}.qa-class-grid{grid-template-columns:1fr}.qa-panel-heading{align-items:flex-start;flex-direction:column}.qa-global-current{width:100%}}
     @media(max-width:460px){.qa-limit-option-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.qa-limit-option-grid.compact{grid-template-columns:repeat(3,minmax(0,1fr))}.qa-target-actions .btn{flex:1}.qa-global-control,.qa-class-section{padding:13px}}
   </style>
@@ -843,6 +863,18 @@
       const remain=bankRemainingFor(student.user_id,className,'Science');
       const setItems=latest?adminData.items.filter(item=>item.assignment_id===(latest.id||latest.assignment_id)).sort((a,b)=>Number(a.position)-Number(b.position)):[];
       const questionMap=new Map(adminData.questions.map(question=>[question.id,question]));
+      const bankQuestions=adminData.questions.filter(question=>question.grade===className&&question.subject==='Science'&&question.is_active!==false).sort((a,b)=>Number(a.sort_order)-Number(b.sort_order));
+      const studentAssignmentIds=new Set(adminData.assignments.filter(assignment=>assignment.user_id===student.user_id).map(assignment=>assignment.id||assignment.assignment_id));
+      const assignedQuestionIds=new Set(adminData.items.filter(item=>studentAssignmentIds.has(item.assignment_id)).map(item=>item.question_id));
+      const bankUsedCount=bankQuestions.filter(question=>assignedQuestionIds.has(question.id)).length;
+      const bankTopics=[...new Set(bankQuestions.map(question=>question.topic).filter(Boolean))];
+      const bankTopicOptions=bankTopics.map(topic=>`<option value=\"${escapeHtml(String(topic).toLowerCase())}\">${escapeHtml(topic)}</option>`).join('');
+      const bankRows=bankQuestions.map((question,index)=>{
+        const wasAssigned=assignedQuestionIds.has(question.id);
+        const questionNumber=question.sort_order??index+1;
+        const searchable=[question.topic,question.prompt,question.answer,question.id].join(' ').toLowerCase();
+        return `<details class=\"qa-bank-row\" data-bank-item data-search=\"${escapeHtml(searchable)}\" data-topic=\"${escapeHtml(String(question.topic||'').toLowerCase())}\"><summary><span class=\"qa-bank-row-title\"><b>Q${escapeHtml(questionNumber)} · ${escapeHtml(question.topic||'Science')}</b><small>${escapeHtml(question.id)}</small></span><span class=\"badge ${wasAssigned?'amber':'blue'}\">${wasAssigned?'Assigned before':'Unused'}</span></summary><div class=\"qa-bank-answer\"><p><b>Question:</b> ${escapeHtml(question.prompt||'')}</p><p><b>Answer:</b> ${escapeHtml(question.answer||'')}</p></div></details>`;
+      }).join('');
       const status=effective.value===0?`Paused by ${effective.source.toLowerCase()}`:remain.total===0?'Question bank not loaded for this class':remain.remaining===0?'Question bank exhausted':!latest?'Waiting for student to open the app':latest.status==='active'?`In progress · ${latest.completed_count||0} of ${latest.target_count||0}`:latest.assigned_date===localDateKey()?'Completed today':'Ready for the next daily set';
       const hasActiveSet=adminData.assignments.some(assignment=>assignment.user_id===student.user_id&&assignment.status==='active');
       const repeatableSets=completedAssignmentsFor(student.user_id).filter(assignment=>{
@@ -872,13 +904,34 @@
           <div class="items-list">${setItems.map(item=>{const question=questionMap.get(item.question_id)||{};const done=!!item.completed_at;return `<div class="item-row"><span class="item-mark ${done?'done':''}">${done?'✓':escapeHtml(item.position)}</span><span class="item-body"><span class="item-meta">${escapeHtml(question.topic||className+' Science')} · ${escapeHtml(item.question_id)}</span><span class="item-question">${escapeHtml(question.prompt||'Question text unavailable')}</span><span class="item-answer"><b>Answer:</b> ${escapeHtml(question.answer||'')}</span></span><span class="item-status ${done?'done':''}">${done?'Studied':'Not yet'}</span></div>`}).join('')||'<p class="small">No set has been created for this student yet.</p>'}</div>
           ${assignmentControls}
           ${latest?.status==='completed'?'<p class="status-line" style="color:#00B894;font-weight:800">✓ All questions in this set were marked studied; completion is recorded.</p>':''}
-        </section>`;
+        </section>
+        <section class=\"panel card qa-full-bank-panel\"><details id=\"student-bank-browser\"><summary class=\"qa-full-bank-summary\"><div><p class=\"panel-kicker\">FULL GRADE QUESTION BANK</p><h3>Browse ${escapeHtml(classLabel(className))} Science Q&amp;A</h3><p>All active questions available to this student, in app order; answers expand below.</p></div><span class=\"badge blue\">${bankQuestions.length} questions · ${bankUsedCount} assigned before</span></summary><div class=\"qa-full-bank-body\"><div class=\"qa-bank-controls\"><input class=\"search\" id=\"student-bank-search\" type=\"search\" placeholder=\"Search question, answer, topic, or ID…\" aria-label=\"Search the student's Q&A bank\"><select id=\"student-bank-topic\" aria-label=\"Filter by topic\"><option value=\"\">All topics</option>${bankTopicOptions}</select></div><div class=\"qa-bank-toolbar\"><span id=\"student-bank-visible-count\">Showing ${bankQuestions.length} of ${bankQuestions.length} questions</span><div class=\"row\"><button class=\"btn btn-secondary btn-small\" id=\"expand-student-bank\" type=\"button\">Expand visible answers</button><button class=\"btn btn-secondary btn-small\" id=\"collapse-student-bank\" type=\"button\">Collapse answers</button></div></div><div class=\"qa-bank-list\" id=\"student-bank-items\">${bankRows||'<p class=\"small\">No active Science questions are loaded for this student’s grade.</p>'}</div></div></details></section>`;
       bindTargetEditors($('admin-detail'));
       $('open-learner').onclick=()=>{ if(mode==='demo')enterDemoStudent(student.user_id);else refreshAdmin(); };
       const repeatButton=$('repeat-selected-set');
       if(repeatButton) repeatButton.onclick=()=>{const sourceId=$('repeat-set-source')?.value;if(sourceId)assignAdminSet(student.user_id,sourceId);};
       const nextButton=$('assign-next-set');
       if(nextButton) nextButton.onclick=()=>assignAdminSet(student.user_id,null);
+      const bankSearch=$('student-bank-search');
+      const bankTopic=$('student-bank-topic');
+      const bankList=$('student-bank-items');
+      const updateBankFilter=()=>{
+        if(!bankList)return;
+        const query=(bankSearch?.value||'').trim().toLowerCase();
+        const topic=(bankTopic?.value||'').toLowerCase();
+        let visible=0;
+        bankList.querySelectorAll('[data-bank-item]').forEach(item=>{
+          const matches=(!query||(item.dataset.search||'').includes(query))&&(!topic||(item.dataset.topic||'')===topic);
+          item.classList.toggle('hidden',!matches);if(matches)visible++;
+        });
+        const count=$('student-bank-visible-count');if(count)count.textContent=`Showing ${visible} of ${bankQuestions.length} questions`;
+      };
+      bankSearch?.addEventListener('input',updateBankFilter);
+      bankTopic?.addEventListener('change',updateBankFilter);
+      const expandBank=$('expand-student-bank');
+      if(expandBank)expandBank.onclick=()=>bankList?.querySelectorAll('[data-bank-item]:not(.hidden)').forEach(item=>item.open=true);
+      const collapseBank=$('collapse-student-bank');
+      if(collapseBank)collapseBank.onclick=()=>bankList?.querySelectorAll('[data-bank-item]').forEach(item=>item.open=false);
     }
 
     // --------------------------- Navigation and startup ---------------------------
