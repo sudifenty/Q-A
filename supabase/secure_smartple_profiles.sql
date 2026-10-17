@@ -1,23 +1,20 @@
--- SmartPle profile least-privilege patch.
--- Run in the existing Supabase project only after reviewing the preflight.
--- This preserves all profile rows and existing non-profile tables.
+-- Tighten access to the EXISTING SmartPle profile table without deleting or
+-- changing profile rows. Run as project owner in the existing Supabase project.
 --
--- Target model:
---   * anon/PUBLIC: no direct access to smartple_profiles
---   * student: SELECT their own profile only
---   * SmartPle admin: SELECT and UPDATE profiles for existing admin controls
---   * authenticated students: no direct INSERT, UPDATE, or DELETE
---   * signup/profile-maintenance SECURITY DEFINER functions remain unaffected
+-- Target access model:
+--   * anon/PUBLIC: no direct table access
+--   * authenticated student: SELECT their own profile only
+--   * authenticated SmartPle admin: SELECT/UPDATE profiles for admin controls
+--   * direct student INSERT/UPDATE/DELETE: not allowed
 --
--- Known legacy policy names are accepted and replaced after the preflight.
--- Any other profile policy name stops the transaction before changes are made.
+-- Existing signup/admin RPCs that create profiles must remain SECURITY DEFINER.
+-- This script stops before changes if it finds unexpected profile policies.
 
 begin;
 
 do $$
 declare
   v_unexpected_policies text;
-  v_non_broad_legacy_policies text;
 begin
   if to_regclass('public.smartple_profiles') is null then
     raise exception 'Missing public.smartple_profiles; stopped before changes.';
@@ -40,11 +37,7 @@ begin
     and tablename = 'smartple_profiles'
     and policyname not in (
       'allow all',
-      'Allow all',
       'allow all profiles',
-      'allow_all_profiles',
-      'smartple_allow_all',
-      'profiles_self',
       'smartple_profiles_self_select',
       'smartple_profiles_admin_update'
     );
@@ -52,29 +45,11 @@ begin
   if v_unexpected_policies is not null then
     raise exception 'Unexpected smartple_profiles policy/policies found (%). No changes made; review them first.', v_unexpected_policies;
   end if;
-
-  -- These two additional names were reported in the project's preflight
-  -- error. Accept them only if they really are unconditional ALL policies.
-  select string_agg(policyname, ', ' order by policyname)
-    into v_non_broad_legacy_policies
-  from pg_catalog.pg_policies
-  where schemaname = 'public'
-    and tablename = 'smartple_profiles'
-    and policyname in ('Allow all', 'allow_all_profiles')
-    and (
-      cmd <> 'ALL'
-      or coalesce(qual, '') !~* '^[[:space:]()]*true[[:space:]()]*$'
-      or (with_check is not null and with_check !~* '^[[:space:]()]*true[[:space:]()]*$')
-    );
-
-  if v_non_broad_legacy_policies is not null then
-    raise exception 'Policy/policies (%) have a known legacy name but are not unconditional ALL policies. No changes made; review them first.', v_non_broad_legacy_policies;
-  end if;
 end;
 $$;
 
--- SECURITY DEFINER avoids RLS recursion when checking an admin's role.
--- It exposes only whether the current Auth user is a SmartPle admin.
+-- SECURITY DEFINER avoids policy recursion when checking the admin's own role.
+-- It returns only whether the current Auth user has role=admin.
 create or replace function public.smartple_profiles_admin_for_rls()
 returns boolean
 language sql
@@ -92,8 +67,7 @@ $$;
 revoke all on function public.smartple_profiles_admin_for_rls() from public, anon, authenticated;
 grant execute on function public.smartple_profiles_admin_for_rls() to authenticated;
 
--- Remove table-level and any column-level browser grants before re-granting
--- only what the policies below require.
+-- Remove any column-level grants as well as table-level grants for browser roles.
 do $$
 declare
   v_column record;
@@ -113,13 +87,9 @@ end;
 $$;
 revoke all privileges on table public.smartple_profiles from public, anon, authenticated;
 
--- Remove only known policies; preflight above aborts on an unrecognized name.
+-- Replace the two reported allow-all policies with least-privilege policies.
 drop policy if exists "allow all" on public.smartple_profiles;
-drop policy if exists "Allow all" on public.smartple_profiles;
 drop policy if exists "allow all profiles" on public.smartple_profiles;
-drop policy if exists allow_all_profiles on public.smartple_profiles;
-drop policy if exists smartple_allow_all on public.smartple_profiles;
-drop policy if exists profiles_self on public.smartple_profiles;
 drop policy if exists smartple_profiles_self_select on public.smartple_profiles;
 drop policy if exists smartple_profiles_admin_update on public.smartple_profiles;
 
@@ -137,6 +107,7 @@ for update to authenticated
 using (public.smartple_profiles_admin_for_rls())
 with check (public.smartple_profiles_admin_for_rls());
 
+-- Keep row data unchanged; RLS now governs direct API requests.
 alter table public.smartple_profiles enable row level security;
 grant select, update on table public.smartple_profiles to authenticated;
 
