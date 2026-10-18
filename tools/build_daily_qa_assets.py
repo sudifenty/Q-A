@@ -27,7 +27,8 @@ SST_TEXT_PATH = ROOT / "content" / "SST_Questions_P3-P7_Only.txt"
 SST_SEED_PATH = ROOT / "supabase" / "seed_sst_questions.sql"
 HTML_PATH = ROOT / "index.html"
 EXPECTED_COUNTS = {"P4": 160, "P5": 180, "P6": 200, "P7": 120}
-EXPECTED_SST_COUNTS = {"P3": 180, "P4": 360, "P5": 660, "P6": 540, "P7": 300}
+EXPECTED_SST_COUNTS = {"P3": 15, "P4": 30, "P5": 55, "P6": 44, "P7": 24}
+EXPECTED_SST_TOTAL = 168
 
 
 def sql_text(value: str) -> str:
@@ -66,27 +67,38 @@ def load_and_validate() -> list[dict]:
 
 
 def load_and_validate_sst() -> list[dict]:
-    """Load the local P3–P7 SST source, enforcing question-only and source order."""
+    """Load the curated P3–P7 SST source, rejecting repeated/rephrased prompts."""
     items = json.loads(SST_BANK_PATH.read_text(encoding="utf-8"))
     if not isinstance(items, list):
         raise ValueError("The SST bank must be a JSON array.")
     counts = Counter(item.get("class") for item in items)
     if dict(counts) != EXPECTED_SST_COUNTS:
-        raise ValueError(f"Unexpected SST class counts: {dict(counts)}")
-    if len(items) != 2040:
-        raise ValueError(f"Expected 2,040 SST questions; found {len(items)}")
-    expected_keys = {"id", "source_number", "class", "subject", "topic", "prompt", "options"}
+        raise ValueError(f"Unexpected deduplicated SST class counts: {dict(counts)}")
+    if len(items) != EXPECTED_SST_TOTAL:
+        raise ValueError(f"Expected {EXPECTED_SST_TOTAL} distinct SST questions; found {len(items)}")
+    expected_keys = {"id", "source_number", "sort_order", "class", "subject", "topic", "prompt", "options"}
     ids = [item.get("id") for item in items]
     if len(ids) != len(set(ids)):
         raise ValueError("SST question IDs must be unique.")
+    seen_prompts: set[str] = set()
     previous_class = 0
+    previous_sort_order = 0
     mcq_count = 0
     class_codes = {f"P{n}": n for n in range(3, 8)}
+    template_prefix = re.compile(
+        r"^(?:answer in one or two sentences|explain briefly|state the correct answer|"
+        r"answer orally|write a clear SST answer|choose the best answer|true or false|"
+        r"complete this revision statement|give a brief explanation|apply what you know|challenge)\b",
+        re.I,
+    )
     for number, item in enumerate(items, start=1):
         if set(item) != expected_keys:
             raise ValueError(f"SST item {number} must contain only question fields; found keys {sorted(item)}")
         if item["source_number"] != number:
-            raise ValueError(f"SST source order must be Q1–Q2040; position {number} has {item['source_number']}")
+            raise ValueError(f"Deduplicated SST order must be Q1–Q{EXPECTED_SST_TOTAL}; position {number} has {item['source_number']}")
+        if not isinstance(item["sort_order"], int) or item["sort_order"] <= previous_sort_order or item["sort_order"] > 2040:
+            raise ValueError(f"Original SST source order must be strictly increasing at Q{number}")
+        previous_sort_order = item["sort_order"]
         if item["subject"] != "SST" or item["class"] not in EXPECTED_SST_COUNTS:
             raise ValueError(f"Invalid SST class/subject at Q{number}")
         class_number = class_codes[item["class"]]
@@ -95,21 +107,29 @@ def load_and_validate_sst() -> list[dict]:
         previous_class = class_number
         if not item["prompt"].strip() or not item["topic"].strip():
             raise ValueError(f"SST prompt/topic is empty at Q{number}")
+        if template_prefix.search(item["prompt"].strip()):
+            raise ValueError(f"Repetitive prompt template found at SST Q{number}: {item['prompt']}")
+        normalized_prompt = re.sub(r"[^a-z0-9]+", " ", item["prompt"].casefold()).strip()
+        if normalized_prompt in seen_prompts:
+            raise ValueError(f"Repeated SST prompt found at Q{number}: {item['prompt']}")
+        seen_prompts.add(normalized_prompt)
         options = item["options"]
-        if options is not None:
-            if not isinstance(options, list) or len(options) != 4 or not all(isinstance(option, str) for option in options):
-                raise ValueError(f"SST MCQ options must be four unmarked strings at Q{number}")
-            if any(re.match(r"^[A-D][.)]\s", option) for option in options):
-                raise ValueError(f"SST option text must not contain answer markers at Q{number}")
-            mcq_count += 1
-    if mcq_count != 170:
-        raise ValueError(f"Expected 170 unmarked four-choice SST MCQs; found {mcq_count}")
+        if not isinstance(options, list) or len(options) != 4 or not all(isinstance(option, str) and option.strip() for option in options):
+            raise ValueError(f"SST MCQ options must be four unmarked strings at Q{number}")
+        if any(re.match(r"^\s*(?:[A-D][.)]|\([A-D]\)|✓|✔|☑|correct\b)", option, re.I) for option in options):
+            raise ValueError(f"SST option text must not contain answer markers at Q{number}")
+        mcq_count += 1
+    if len(seen_prompts) != EXPECTED_SST_TOTAL:
+        raise ValueError("Every SST learning-point prompt must be unique.")
+    if len({item["topic"] for item in items}) != 34:
+        raise ValueError("The deduplicated SST bank must retain all 34 topics.")
+    if mcq_count != EXPECTED_SST_TOTAL:
+        raise ValueError(f"Expected {EXPECTED_SST_TOTAL} unique four-choice SST questions; found {mcq_count}")
     return items
-
 
 def build_sst_text(items: list[dict]) -> str:
     """Create a readable question-only copy; never serialize answer keys."""
-    lines = ["Uganda Primary SST Revision — Questions Only", "P3 to P7 · 2,040 questions · source order", ""]
+    lines = ["Uganda Primary SST Revision — Questions Only", f"P3 to P7 · {len(items)} unique questions · one per learning point · source order", ""]
     current_class = None
     current_topic = None
     for item in items:
@@ -169,10 +189,10 @@ def build_seed(items: list[dict]) -> str:
 def build_sst_seed(items: list[dict]) -> str:
     """Build SQL rows without any SST answer key; MCQ choices stay unmarked JSON."""
     lines = [
-        "-- Question-only P3-P7 SST bank; answer is NULL for every row.",
-        "-- Source order is P3 Q1 through P7 Q2040; choices are stored as unmarked text.",
+        f"-- {len(items)} unique P3-P7 SST questions; answer is NULL for every row.",
+        f"-- One question per learning point, compact source order P3 Q1 through P7 Q{len(items)}; choices are unmarked.",
         "insert into public.daily_qa_questions",
-        "  (id, grade, subject, topic, sort_order, prompt, answer, options, source_file, is_active)",
+        "  (id, grade, subject, topic, sort_order, source_number, prompt, answer, options, source_file, is_active)",
         "values",
     ]
     rows = []
@@ -184,6 +204,7 @@ def build_sst_seed(items: list[dict]) -> str:
             sql_text(item["class"]),
             sql_text("SST"),
             sql_text(item["topic"]),
+            str(int(item["sort_order"])),
             str(int(item["source_number"])),
             sql_text(item["prompt"]),
             "NULL",
@@ -199,6 +220,7 @@ def build_sst_seed(items: list[dict]) -> str:
         "  subject = excluded.subject,",
         "  topic = excluded.topic,",
         "  sort_order = excluded.sort_order,",
+        "  source_number = excluded.source_number,",
         "  prompt = excluded.prompt,",
         "  answer = excluded.answer,",
         "  options = excluded.options,",
@@ -207,6 +229,18 @@ def build_sst_seed(items: list[dict]) -> str:
         "",
     ])
     return "\n".join(lines)
+
+
+def build_sst_dedupe_cleanup(items: list[dict]) -> str:
+    """Deactivate only obsolete SST paraphrases; keep rows for historical assignments."""
+    ids = ",\n  ".join(sql_text(item["id"]) for item in items)
+    return (
+        "-- Retire earlier templated paraphrases without deleting rows or breaking saved progress.\n"
+        "update public.daily_qa_questions\n"
+        "set is_active = false\n"
+        "where subject = 'SST' and is_active\n"
+        f"  and id not in (\n  {ids}\n  );\n"
+    )
 
 
 def replace_generated_block(sql: str, start_marker: str, end_marker: str, replacement: str) -> str:
@@ -247,7 +281,7 @@ def build_order_csv(items: list[dict]) -> str:
     return output.getvalue()
 
 
-def build_sql_copy_panel(setup_sql: str) -> str:
+def build_sql_copy_panel(setup_sql: str, sst_count: int) -> str:
     """Create a browser-viewable copy/download panel for the complete setup SQL."""
     template = r'''<!doctype html>
 <html lang="en">
@@ -268,7 +302,7 @@ textarea{display:block;width:100%;height:min(70vh,900px);min-height:460px;resize
 <main>
 <header>
 <h1>Q-A — Supabase setup SQL</h1>
-<p>This is the full, additive schema-plus-seed script for the existing SmartPle student-app project: <strong>__LINE_COUNT__ lines, 2,700 questions (660 Science + 2,040 SST)</strong>.</p>
+<p>This is the full, additive schema-plus-seed script for the existing SmartPle student-app project: <strong>__LINE_COUNT__ lines, __TOTAL_COUNT__ questions (660 Science + __SST_COUNT__ unique SST)</strong>.</p>
 <p>For a fresh project, this includes the guided P4→P7 Science bank, question-only P3→P7 SST bank, and admin-assigned student subject with the shared daily target/set flow. On an already-set-up project, do not rerun this full setup; apply the refreshed <code>assign_student_sets.sql</code> migration.</p>
 <p>The assignment migration is safe to reapply if you already ran an earlier copy. Then run <code>authorize_qa_admin.sql</code> if needed, review/apply <code>secure_smartple_profiles.sql</code>, and finish with <code>verify_daily_qa.sql</code>.</p>
 </header>
@@ -297,11 +331,13 @@ document.getElementById('download').addEventListener('click',()=>{
 </html>'''
     return (template
             .replace("__LINE_COUNT__", f"{len(setup_sql.splitlines()):,}")
+            .replace("__SST_COUNT__", f"{sst_count:,}")
+            .replace("__TOTAL_COUNT__", f"{660 + sst_count:,}")
             .replace("__ESCAPED_SQL__", html_escape(setup_sql, quote=False)))
 
 
 
-def build_assignment_copy_panel(sql_text: str) -> str:
+def build_assignment_copy_panel(sql_text: str, sst_count: int) -> str:
     # Visible, standalone Copy/Download panel for the existing-install migration.
     template = r'''<!doctype html>
 <html lang="en">
@@ -314,7 +350,7 @@ def build_assignment_copy_panel(sql_text: str) -> str:
 </head>
 <body><main>
 <header><h1>Q-A — Shared sequence and admin set update SQL</h1>
-<p>This re-runnable migration adds SST question-only rows, per-student Science/SST assignment, and the same daily set flow for both banks. SST starts at P3 Q1 and continues through P7 Q2040. New sets use the student's effective daily target (20 by default); active/completed sets and existing Auth/profile rows are preserved.</p>
+<p>This re-runnable migration deactivates the old paraphrase variants, keeps one unique question per SST learning point, and preserves the daily set flow. The active bank follows P3 Q1 through P7 Q__SST_COUNT__. New sets use the student's effective daily target (20 by default); existing Auth/profile rows and saved progress are retained.</p>
 <p>Run it in the existing SmartPle project’s SQL Editor after the Q-A setup. It is safe to reapply; fresh setup already includes the current behavior.</p></header>
 <div class="note"><strong>Safe scope:</strong> adds Q-A bank columns/rows and updates subject-aware assignment RPCs. It does not create accounts, modify profile rows, replace Auth/security setup, or change existing progress. A subject change applies to the next set; an active set is finished unchanged.</div>
 <div class="toolbar"><button class="primary" id="copy" type="button">Copy SQL</button><button id="download" type="button">Download .sql</button><span id="status" role="status" aria-live="polite"></span></div>
@@ -326,7 +362,9 @@ function say(text){status.textContent=text;}
 document.getElementById('copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(box.value);say('Copied. Paste the migration into Supabase SQL Editor.');}catch(_){box.focus();box.select();box.setSelectionRange(0,box.value.length);try{if(document.execCommand('copy'))say('Copied. Paste the migration into Supabase SQL Editor.');else say('SQL selected; press Ctrl+C or ⌘C to copy.');}catch(__){say('SQL selected; press Ctrl+C or ⌘C to copy.');}}});
 document.getElementById('download').addEventListener('click',()=>{const blob=new Blob([box.value],{type:'text/sql;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='assign_student_sets.sql';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);say('Download started.');});
 </script></body></html>'''
-    return template.replace("__ESCAPED_SQL__", html_escape(sql_text, quote=False))
+    return (template
+            .replace("__SST_COUNT__", f"{sst_count:,}")
+            .replace("__ESCAPED_SQL__", html_escape(sql_text, quote=False)))
 
 
 def embed_json(html: str, script_id: str, value: str | list[dict]) -> str:
@@ -356,10 +394,16 @@ def main() -> None:
         "-- END GENERATED SST QUESTION-ONLY BANK",
         sst_seed_sql,
     )
+    assignment_sql = replace_generated_block(
+        assignment_sql,
+        "-- BEGIN GENERATED SST DEDUPLICATION FILTER",
+        "-- END GENERATED SST DEDUPLICATION FILTER",
+        build_sst_dedupe_cleanup(sst_items),
+    )
     ASSIGNMENT_PATH.write_text(assignment_sql, encoding="utf-8")
     setup_sql = (
         "-- COPY/PASTE THIS ENTIRE FILE into the SQL Editor of the existing SmartPle project.\n"
-        "-- Fresh setup: 660 guided Science Q&A questions plus 2,040 question-only SST items.\n"
+        f"-- Fresh setup: 660 guided Science Q&A questions plus {len(sst_items)} unique SST questions.\n"
         "-- Admin assigns Science or SST per student; both use the same daily target (20 by default).\n"
         "-- After setup, run authorize_qa_admin.sql only if not already successful, then review the\n"
         "-- separate profile-security patch and finish with verify_daily_qa.sql.\n"
@@ -368,13 +412,13 @@ def main() -> None:
         + schema_sql.rstrip()
         + "\n\n-- Ordered P4-P7 Science Q&A seed (660 items).\n"
         + seed_sql.rstrip()
-        + "\n\n-- Question-only P3-P7 SST bank (2,040 items; answer is NULL).\n"
+        + f"\n\n-- Unique question-only P3-P7 SST bank ({len(sst_items)} items; answers are NULL).\n"
         + sst_seed_sql.rstrip()
         + "\n"
     )
     SETUP_PATH.write_text(setup_sql, encoding="utf-8")
-    COPY_PANEL_PATH.write_text(build_sql_copy_panel(setup_sql), encoding="utf-8")
-    ASSIGNMENT_COPY_PATH.write_text(build_assignment_copy_panel(assignment_sql), encoding="utf-8")
+    COPY_PANEL_PATH.write_text(build_sql_copy_panel(setup_sql, len(sst_items)), encoding="utf-8")
+    ASSIGNMENT_COPY_PATH.write_text(build_assignment_copy_panel(assignment_sql, len(sst_items)), encoding="utf-8")
     ORDER_PATH.write_text(build_order_csv(items), encoding="utf-8")
     html = HTML_PATH.read_text(encoding="utf-8")
     html = embed_json(html, "question-bank", items)
@@ -386,13 +430,13 @@ def main() -> None:
     HTML_PATH.write_text(html, encoding="utf-8")
     print("Generated 660 ordered Q&A items:", dict(Counter(grade_code(item["grade"]) for item in items)))
     print(f"Wrote {SEED_PATH.relative_to(ROOT)}")
-    print(f"Wrote {SST_SEED_PATH.relative_to(ROOT)} (2,040 question-only SST rows; NULL answers)")
+    print(f"Wrote {SST_SEED_PATH.relative_to(ROOT)} ({len(sst_items)} unique question-only SST rows; NULL answers)")
     print(f"Wrote {SETUP_PATH.relative_to(ROOT)} (schema + seed, ready to copy/paste)")
     print(f"Wrote {COPY_PANEL_PATH.relative_to(ROOT)} (visible setup SQL with Copy and Download controls)")
     print(f"Wrote {ASSIGNMENT_COPY_PATH.relative_to(ROOT)} (visible existing-install migration with Copy and Download controls)")
     print(f"Wrote {ORDER_PATH.relative_to(ROOT)} (questions only; no answers)")
     print(f"Wrote {SST_TEXT_PATH.relative_to(ROOT)} (questions only; no answers)")
-    print("Validated 660 Science and 2,040 question-only SST rows")
+    print(f"Validated 660 Science and {len(sst_items)} unique question-only SST rows")
     print("Synchronized embedded banks and complete setup/upgrade SQL")
 
 

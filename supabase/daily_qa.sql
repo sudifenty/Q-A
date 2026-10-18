@@ -74,6 +74,7 @@ create table if not exists public.daily_qa_questions (
   prompt text not null,
   answer text,
   options jsonb,
+  source_number integer,
   source_file text,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
@@ -364,7 +365,7 @@ as $$
       select jsonb_agg(jsonb_build_object(
         'question_id', q.id,
         'position', i.position,
-        'source_number', q.sort_order,
+        'source_number', coalesce(q.source_number, q.sort_order),
         'grade', q.grade,
         'subject', q.subject,
         'topic', q.topic,
@@ -509,6 +510,183 @@ begin
              q.sort_order, q.id
     limit v_take
   ) as selected;
+
+  return public.daily_qa_assignment_payload(v_assignment.id, 'active');
+end;
+$$;
+
+create or replace function public.daily_qa_admin_assign_set(
+  p_user_id uuid,
+  p_source_assignment_id uuid default null
+)
+returns jsonb
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  v_admin uuid := auth.uid();
+  v_today date := (now() at time zone 'Africa/Kampala')::date;
+  v_profile public.daily_qa_profiles%rowtype;
+  v_latest public.daily_qa_assignments%rowtype;
+  v_source public.daily_qa_assignments%rowtype;
+  v_assignment public.daily_qa_assignments%rowtype;
+  v_subject text := 'Science';
+  v_target integer;
+  v_available integer := 0;
+  v_take integer := 0;
+  v_set_number integer := 1;
+begin
+  if v_admin is null then
+    raise exception using errcode = '28000', message = 'Sign in is required.';
+  end if;
+  if not public.daily_qa_is_admin() then
+    raise exception using errcode = '42501', message = 'Q-A administrator access is required.';
+  end if;
+  if p_user_id is null then
+    raise exception using errcode = '22023', message = 'Choose a student first.';
+  end if;
+
+  select p.* into v_profile
+  from public.daily_qa_profiles p
+  join public.smartple_profiles s on s.user_id = p.user_id
+  where p.user_id = p_user_id and p.role = 'student' and s.role = 'student';
+  if not found then
+    raise exception using errcode = '42501', message = 'A current SmartPle student profile is required.';
+  end if;
+
+  select coalesce((select s.subject from public.daily_qa_settings s where s.user_id = p_user_id), 'Science')
+    into v_subject;
+  if v_subject not in ('Science','SST') then
+    raise exception using errcode = '22023', message = 'The admin-assigned subject is invalid.';
+  end if;
+
+  select coalesce(
+    (select s.target_per_day from public.daily_qa_settings s where s.user_id = p_user_id),
+    (select c.target_per_day
+       from public.daily_qa_profiles p
+       join public.daily_qa_class_settings c on c.class_name = p.class
+      where p.user_id = p_user_id),
+    (select g.target_per_day from public.daily_qa_global_settings g where g.id = true),
+    20
+  ) into v_target;
+  if v_target <= 0 then
+    raise exception using errcode = '42501', message = 'This student is paused. Set a positive student, class, or global target before assigning another set.';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext(p_user_id::text));
+  if exists (select 1 from public.daily_qa_assignments a where a.user_id = p_user_id and a.status = 'active') then
+    raise exception using errcode = '55000', message = 'The student still has an active set. Assign another set after it is complete.';
+  end if;
+
+  select * into v_latest
+  from public.daily_qa_assignments a
+  where a.user_id = p_user_id
+  order by a.set_number desc
+  limit 1
+  for update;
+  if not found or v_latest.status <> 'completed' then
+    raise exception using errcode = '55000', message = 'The student must finish their current set before another can be assigned.';
+  end if;
+
+  select coalesce(max(a.set_number), 0) + 1 into v_set_number
+  from public.daily_qa_assignments a where a.user_id = p_user_id;
+
+  if p_source_assignment_id is not null then
+    select * into v_source
+    from public.daily_qa_assignments a
+    where a.id = p_source_assignment_id and a.user_id = p_user_id and a.status = 'completed'
+    for update;
+    if not found then
+      raise exception using errcode = '22023', message = 'Choose one of this student’s completed sets to repeat.';
+    end if;
+    if v_source.subject <> v_subject then
+      raise exception using errcode = '22023', message = 'The selected set is not from the student’s currently assigned subject.';
+    end if;
+
+    select count(*)::integer into v_take
+    from public.daily_qa_assignment_items i where i.assignment_id = v_source.id;
+    if v_take = 0 then
+      raise exception using errcode = '22023', message = 'The selected completed set has no questions to repeat.';
+    end if;
+    if exists (
+      select 1 from public.daily_qa_assignment_items i
+      join public.daily_qa_questions q on q.id = i.question_id
+      where i.assignment_id = v_source.id
+        and (not q.is_active
+          or q.subject <> v_subject
+          or (v_subject = 'Science' and q.grade not in ('P4','P5','P6','P7'))
+          or (v_subject = 'SST' and q.grade not in ('P3','P4','P5','P6','P7')))
+    ) then
+      raise exception using errcode = '22023', message = 'The selected set contains questions outside the student’s assigned subject bank.';
+    end if;
+
+    insert into public.daily_qa_assignments (
+      user_id, subject, set_number, assigned_date, requested_target, target_count,
+      completed_count, status, assignment_type, source_assignment_id, assigned_by
+    ) values (
+      p_user_id, v_subject, v_set_number, v_today, v_source.requested_target, v_take,
+      0, 'active', 'admin_repeat', v_source.id, v_admin
+    ) returning * into v_assignment;
+
+    insert into public.daily_qa_assignment_items (assignment_id, question_id, position)
+    select v_assignment.id, i.question_id, i.position
+    from public.daily_qa_assignment_items i
+    where i.assignment_id = v_source.id
+    order by i.position;
+  else
+    select count(*)::integer into v_available
+    from public.daily_qa_questions q
+    where q.is_active and q.subject = v_subject
+      and q.grade in ('P3','P4','P5','P6','P7')
+      and (v_subject = 'SST' or q.grade <> 'P3')
+      and not exists (
+        select 1 from public.daily_qa_assignment_items i
+        join public.daily_qa_assignments a on a.id = i.assignment_id
+        where a.user_id = p_user_id and i.question_id = q.id
+      );
+    if v_available = 0 then
+      raise exception using errcode = '22023', message = 'No unused questions remain in the student’s currently assigned subject bank.';
+    end if;
+
+    v_take := least(v_target, v_available);
+    insert into public.daily_qa_assignments (
+      user_id, subject, set_number, assigned_date, requested_target, target_count,
+      completed_count, status, assignment_type, source_assignment_id, assigned_by
+    ) values (
+      p_user_id, v_subject, v_set_number, v_today, v_target, v_take,
+      0, 'active', 'admin_new', null, v_admin
+    ) returning * into v_assignment;
+
+    insert into public.daily_qa_assignment_items (assignment_id, question_id, position)
+    select v_assignment.id, selected.id,
+           row_number() over (
+             order by case when v_subject = 'SST' then
+                            case selected.grade when 'P3' then 1 when 'P4' then 2 when 'P5' then 3 when 'P6' then 4 when 'P7' then 5 end
+                           else
+                            case selected.grade when 'P4' then 1 when 'P5' then 2 when 'P6' then 3 when 'P7' then 4 end
+                           end,
+                    selected.sort_order, selected.id
+           )::integer
+    from (
+      select q.id, q.grade, q.sort_order
+      from public.daily_qa_questions q
+      where q.is_active and q.subject = v_subject
+        and q.grade in ('P3','P4','P5','P6','P7')
+        and (v_subject = 'SST' or q.grade <> 'P3')
+        and not exists (
+          select 1 from public.daily_qa_assignment_items i
+          join public.daily_qa_assignments a on a.id = i.assignment_id
+          where a.user_id = p_user_id and i.question_id = q.id
+        )
+      order by case when v_subject = 'SST' then
+                     case q.grade when 'P3' then 1 when 'P4' then 2 when 'P5' then 3 when 'P6' then 4 when 'P7' then 5 end
+                    else
+                     case q.grade when 'P4' then 1 when 'P5' then 2 when 'P6' then 3 when 'P7' then 4 end
+                    end,
+               q.sort_order, q.id
+      limit v_take
+    ) as selected;
+  end if;
 
   return public.daily_qa_assignment_payload(v_assignment.id, 'active');
 end;

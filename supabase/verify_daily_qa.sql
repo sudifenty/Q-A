@@ -177,7 +177,8 @@ begin
      or not exists (select 1 from information_schema.columns where table_schema='public' and table_name='daily_qa_assignments' and column_name='assigned_by')
      or not exists (select 1 from information_schema.columns where table_schema='public' and table_name='daily_qa_assignments' and column_name='subject')
      or not exists (select 1 from information_schema.columns where table_schema='public' and table_name='daily_qa_settings' and column_name='subject')
-     or not exists (select 1 from information_schema.columns where table_schema='public' and table_name='daily_qa_questions' and column_name='options') then
+     or not exists (select 1 from information_schema.columns where table_schema='public' and table_name='daily_qa_questions' and column_name='options')
+     or not exists (select 1 from information_schema.columns where table_schema='public' and table_name='daily_qa_questions' and column_name='source_number') then
     raise exception 'Missing subject-assignment/SST bank metadata. Apply the refreshed assign_student_sets.sql on an existing installation.';
   end if;
   if not exists (
@@ -208,10 +209,31 @@ begin
   select count(*) into v_sst_p7 from public.daily_qa_questions where grade='P7' and subject='SST' and is_active;
   v_sst_total := v_sst_p3 + v_sst_p4 + v_sst_p5 + v_sst_p6 + v_sst_p7;
   select count(*) into v_sst_mcq from public.daily_qa_questions where subject='SST' and is_active and options is not null;
-  if v_sst_p3 < 180 or v_sst_p4 < 360 or v_sst_p5 < 660 or v_sst_p6 < 540 or v_sst_p7 < 300 then
-    raise exception 'Expected at least P3 180, P4 360, P5 660, P6 540 and P7 300 SST items; found P3 %, P4 %, P5 %, P6 %, P7 %.', v_sst_p3, v_sst_p4, v_sst_p5, v_sst_p6, v_sst_p7;
+  if v_sst_p3 <> 15 or v_sst_p4 <> 30 or v_sst_p5 <> 55 or v_sst_p6 <> 44 or v_sst_p7 <> 24 or v_sst_total <> 168 then
+    raise exception 'Expected 168 unique active SST prompts (P3 15, P4 30, P5 55, P6 44, P7 24); found P3 %, P4 %, P5 %, P6 %, P7 % (% total).', v_sst_p3, v_sst_p4, v_sst_p5, v_sst_p6, v_sst_p7, v_sst_total;
   end if;
-  if v_sst_mcq < 170 then raise exception 'Expected at least 170 SST four-choice items; found %', v_sst_mcq; end if;
+  if v_sst_mcq <> 168 then raise exception 'Expected 168 unmarked four-choice SST items; found %', v_sst_mcq; end if;
+  if exists (
+    select 1 from public.daily_qa_questions
+    where subject='SST' and is_active
+    group by source_number having source_number is null or count(*) > 1
+  ) or (select count(*) from public.daily_qa_questions where subject='SST' and is_active and source_number between 1 and 168) <> 168 then
+    raise exception 'Active SST source_number values must uniquely cover Q1–Q168.';
+  end if;
+  if exists (
+    select 1 from public.daily_qa_questions
+    where subject='SST' and is_active
+      and (jsonb_typeof(options) <> 'array' or jsonb_array_length(options) <> 4)
+  ) then
+    raise exception 'Every active SST question must have four unmarked choices.';
+  end if;
+  if exists (
+    select lower(regexp_replace(prompt, '[^[:alnum:]]+', ' ', 'g'))
+    from public.daily_qa_questions where subject='SST' and is_active
+    group by 1 having count(*) > 1
+  ) then
+    raise exception 'Repeated normalized SST prompts remain active.';
+  end if;
   if exists (select 1 from public.daily_qa_questions where subject='SST' and answer is not null) then
     raise exception 'SST rows must remain question-only; found a non-NULL answer value.';
   end if;
@@ -239,6 +261,6 @@ begin
     raise exception 'Missing RPC public.daily_qa_complete_item(uuid,text).';
   end if;
 
-  raise notice 'Q-A checks passed: Science P4 %, P5 %, P6 %, P7 % (% total); SST P3 %, P4 %, P5 %, P6 %, P7 % (% total, % four-choice); question-only SST answers; per-student subject columns and assignment RPCs found; shared profiles/admin allowlist and scoped RLS found.', v_p4, v_p5, v_p6, v_p7, v_total, v_sst_p3, v_sst_p4, v_sst_p5, v_sst_p6, v_sst_p7, v_sst_total, v_sst_mcq;
+  raise notice 'Q-A checks passed: Science P4 %, P5 %, P6 %, P7 % (% total); SST % unique questions (P3 %, P4 %, P5 %, P6 %, P7 %), % four-choice; no active duplicate prompts, question-only answers; per-student subject columns and assignment RPCs found; shared profiles/admin allowlist and scoped RLS found.', v_p4, v_p5, v_p6, v_p7, v_total, v_sst_total, v_sst_p3, v_sst_p4, v_sst_p5, v_sst_p6, v_sst_p7, v_sst_mcq;
 end;
 $$;

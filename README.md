@@ -11,9 +11,9 @@ service-worker.js                 Offline app-shell cache; never caches Supabase
 icons/                            192px, 512px, and Apple touch icons
 content/question_bank.json       Canonical, ordered P4–P7 Science Q&A with answer guides
 content/question_order.csv       Question-only P4–P7 Q&A grade/topic/order index
-content/sst_questions_p3_p7.json Canonical P3–P7 SST questions only; 2,040 source-ordered items
-content/SST_Questions_P3-P7_Only.txt Readable SST question-only export; no answer keys
-supabase/setup_shared_project.sql Paste-ready schema plus 660 Science and 2,040 question-only SST rows
+content/sst_questions_p3_p7.json Canonical P3–P7 SST bank; 168 distinct questions, one per learning point
+content/SST_Questions_P3-P7_Only.txt Readable 168-question SST export with unmarked choices; no answer keys
+supabase/setup_shared_project.sql Paste-ready schema plus 660 Science and 168 unique SST rows
 supabase/setup_sql_copy.html     Visible SQL panel with copy/download controls
 supabase/secure_smartple_profiles.sql Restricts shared profile access while preserving student/admin reads
 supabase/secure_profiles_copy.html    Visible profile-security patch with copy/download controls
@@ -22,7 +22,7 @@ supabase/assign_student_sets.sql Existing-install update: SST data, subject assi
 supabase/assign_student_sets_copy.html  Visible migration panel with copy/download controls
 supabase/authorize_qa_admin.sql  Maps an existing SmartPle admin to the protected Q-A allowlist
 supabase/seed_daily_qa.sql       Canonical 660 ordered P4–P7 Science Q&A seed
-supabase/seed_sst_questions.sql  2,040 SST questions only; options unmarked, answers NULL
+supabase/seed_sst_questions.sql  168 distinct SST questions; choices unmarked, answers NULL
 supabase/verify_daily_qa.sql     Read-only checks for profiles, RLS/RPCs, both banks, and subject assignment
 supabase/verify_sql_copy.html    Visible verifier panel with copy/download controls
 tools/build_daily_qa_assets.py   Rebuilds both bank seeds, SQL panels, SST text export, CSV, and embedded data
@@ -31,21 +31,21 @@ tools/build_daily_qa_assets.py   Rebuilds both bank seeds, SQL panels, SST text 
 
 ## Question-bank scope and order
 
-The existing Science Q&A wording, source IDs, answers, P4–P7 order, targets, and admin controls are preserved. Its counts remain **P4: 160, P5: 180, P6: 200, P7: 120** (660 total). The separate SST source contains **2,040 questions** in one uninterrupted order: P3 180, P4 360, P5 660, P6 540, P7 300 (34 topics; 170 four-choice MCQs). MCQ choices are plain, unmarked text. SST contains no answer key; in SQL its `answer` is `NULL`.
+The existing Science Q&A wording, source IDs, answers, P4–P7 order, targets, and admin controls are preserved. Its counts remain **P4: 160, P5: 180, P6: 200, P7: 120** (660 total). The original 2,040-entry SST source repeated each of 170 learning-point prompts in multiple templates. To remove those repetitions, the learner bank now keeps one distinct question per learning point, removes two exact cross-topic repeats, and contains **168 questions** in P3→P7 source order: P3 15, P4 30, P5 55, P6 44, P7 24 across 34 topics. Each retained prompt has four plain, unmarked choices. SST has no answer key; in SQL its `answer` is `NULL`.
 
-For Science Q&A, edit `content/question_bank.json`. For SST, edit only `content/sst_questions_p3_p7.json` and preserve source order and Q1–Q2040 numbering. Run from the repository root:
+For Science Q&A, edit `content/question_bank.json`. For SST, edit only `content/sst_questions_p3_p7.json`; preserve compact `source_number` order Q1–Q168 and increasing original `sort_order` values. Run from the repository root:
 
 ```bash
 python tools/build_daily_qa_assets.py
 ```
 
-The builder validates both banks; regenerates the 660 Science rows and 2,040 SST question-only rows; rebuilds fresh setup and existing-install migration SQL with visible Copy/Download panels; creates the SST text export; and embeds the demo banks and complete SQL in `index.html`.
+The builder validates both banks and rejects repeated SST prompts or template rephrasings; it regenerates the 660 Science rows and 168 de-duplicated SST rows; rebuilds fresh setup and existing-install migration SQL with visible Copy/Download panels; creates the SST text export; and embeds the demo banks and complete SQL in `index.html`.
 
 ## Admin-assigned subject and daily sets
 
 In the built-in Admin Preview, select a student and set **Assigned subject** to **Science** or **SST**. This is a per-student admin control; the learner sees the selected subject in their normal daily-set flow and cannot switch subjects. New sets use the same effective admin-controlled target for both subjects—**20 questions by default**. If the admin changes the target, the next set follows that value just like Science.
 
-Science remains the guided P4–P7 question-and-answer set. SST uses the same assignment/progress flow but provides question-only content: SST students receive the next unused items starting at P3 Q1, continuing across class boundaries through P7 Q2040, with any MCQ options unmarked. There is no SST answer reveal, answer key, or scoring. Studied-status tracking, Back/Next review, admin repeat, and next-unused assignment use the existing set controls.
+Science remains the guided P4–P7 question-and-answer set. SST uses the same assignment/progress flow but provides question-only content: SST students receive the next unused distinct questions starting at P3 Q1, continuing across class boundaries through P7 Q168, with unmarked options. There is no SST answer reveal, answer key, or scoring. Studied-status tracking, Back/Next review, admin repeat, and next-unused assignment use the existing set controls. If a set was already created from the earlier 2,040-entry bank, it is left intact to preserve progress and may finish with its old variants; all new SST sets use only the de-duplicated bank.
 
 A subject change does not rewrite history. An active set completes in its original subject, with progress unchanged; the admin’s new selection applies to the next set. A completed same-day set from the previous subject does not block a set for the newly assigned subject. Existing students and missing subject settings default to Science, preserving current behavior until the admin chooses SST. The question-bank row policy also limits direct authenticated reads to the student’s assigned subject; admins retain access to both banks.
 
@@ -55,9 +55,9 @@ Q-A is configured to use the **same Supabase project and Auth accounts as the ex
 
 Use these files in the existing student app project’s SQL Editor:
 
-1. **Fresh install only:** run the complete `supabase/setup_shared_project.sql`. It includes the additive schema, existing profile mapping/RLS/RPCs, 660 Science Q&A rows, 2,040 SST question-only rows, and admin subject-assignment/daily-set functions. It reuses the existing Auth accounts. If the Q-A setup has already succeeded, do **not** rerun this full setup.
+1. **Fresh install only:** run the complete `supabase/setup_shared_project.sql`. It includes the additive schema, existing profile mapping/RLS/RPCs, 660 Science Q&A rows, 168 unique SST question-only rows, and admin subject-assignment/daily-set functions. It reuses the existing Auth accounts. If the Q-A setup has already succeeded, do **not** rerun this full setup.
 2. Run `supabase/authorize_qa_admin.sql` only if the existing admin authorization has **not** already succeeded. Do not repeat a successful authorization step.
-3. **Existing Q-A install:** run the refreshed `supabase/assign_student_sets.sql` once. This idempotent feature migration adds the subject/options columns, question-only SST rows, and subject-aware set RPCs. It preserves existing Auth users, profiles, Science questions, active assignments, and studied progress; existing students default to Science. It does not rerun the full setup or change the admin allowlist.
+3. **Existing Q-A install:** run the refreshed `supabase/assign_student_sets.sql` once. This idempotent feature migration adds subject/source-number columns and 168 unique SST questions. If an earlier 2,040-row SST migration was applied, it deactivates the rephrased variants without deleting their rows, preserving saved assignment/progress history; future SST sets use only the distinct bank. Existing students default to Science. It does not rerun the full setup or change the admin allowlist.
 4. `supabase/secure_smartple_profiles.sql` is a separate, unchanged security patch. Review/apply it separately if still needed; it is not bundled into the subject/SST migration.
 5. After setup/update and any separately required security work, `supabase/verify_daily_qa.sql` performs read-only checks for the shared profiles/admin allowlist/RLS, subject assignment, Science and SST counts, and question-only SST rows.
 
@@ -82,13 +82,13 @@ After the first visit, the service worker can reopen the app shell and embedded 
 ## Behavior
 
 - **Science:** guided revision shows one question with its answer/explanation. **NEXT** marks an unstudied question and advances; **BACK** reviews the previous question without undoing studied status.
-- **SST:** shown only when the admin assigns SST. The student gets a daily set from the P3 Q1→P7 Q2040 sequence, independent of profile class. It shows only questions and unmarked MCQ choices; there are no answer keys, answer reveals, or scores. Progress records studied status only.
+- **SST:** shown only when the admin assigns SST. The student gets a daily set from the 168-question P3 Q1→P7 Q168 sequence, independent of profile class. It shows only questions and unmarked MCQ choices; there are no answer keys, answer reveals, or scores. Progress records studied status only.
 - The built-in Admin Preview assigns **Science or SST per student** and controls global, P4–P7 class, and individual daily targets. Presets are **0, 5, 10, 20, and 50**, with a custom whole-number value from 0 to 500. Target precedence remains **student override → class rule → global default**; default is 20. A student-level 0 pauses that student.
 - Clearing a student target override preserves the student’s assigned subject. The student list shows the assigned Science/SST mode and effective target.
-- Science sets follow the existing P4→P7 sequence. SST sets follow P3 Q1→P7 Q2040. New sets skip questions previously assigned within that bank; active sets resume and retain their original subject and progress.
+- Science sets follow the existing P4→P7 sequence. SST sets follow the unique P3 Q1→P7 Q168 sequence. New sets skip questions previously assigned within that bank; active sets resume and retain their original subject and progress.
 - Selecting a student shows the subject selector, target editor, latest-set progress, same-subject repeat/next-unused controls, and an expandable admin bank preview. SST previews never show answers. A subject switch applies to the next set and does not rewrite completed or active sets.
 - After a student completes a set, the admin can repeat a completed set from the currently assigned subject or assign the next unused questions from that subject. New sets use the student’s effective target—20 by default—and the learner must finish an active set before another admin assignment.
 
 ## Validation status
 
-Static checks confirmed all 660 existing Q&A items, exact source wording/order, per-grade counts, the questions-only CSV, generated seed, combined setup SQL, refreshed assignment migration and copy panel, verifier panel parity, and embedded HTML copies. SST checks confirmed the 2,040-item source-number sequence, class totals and boundaries (P3 180, P4 360, P5 660, P6 540, P7 300), 34 topics, 170 four-choice questions, question-only fields, no answer-key lines in the text export, and an embedded bank identical to the canonical JSON. JavaScript syntax and DOM smoke tests confirmed SST Q1→Q2040 across class boundaries, completion/restart behavior, and preservation of the original Q&A demo questions and answers. The admin full-bank rendering, service worker, PWA manifest, icon assets, required DOM IDs, and local asset responses were also checked. Demo tests confirmed that a P7 learner starts at P4 Q1, the sequence crosses into P5 only after P4, explicit repeats reproduce the selected set, and next-unused assignment skips previously assigned items. Student Back/Next tests confirmed previous-question review preserves studied timestamps and only unstudied items are submitted as progress. The SQL migration was statically reviewed but has not been executed or validated against a live PostgreSQL project. The owner reports the combined SQL setup and admin authorization succeeded; do not rerun the full setup for these changes. The read-only verifier stopped because the existing `smartple_profiles` table has RLS disabled and permissive grants/policies. `secure_smartple_profiles.sql` is prepared but has not been applied; student login, live assignment flow, full verification, and device-level PWA installation/offline behavior remain untested.
+The asset builder passes `py_compile`, and a repeat build produced byte-identical outputs for the SST export, CSV, seeds, setup/migration SQL and panels, and embedded app. Content checks confirm 660 ordered Science items (P4 160/P5 180/P6 200/P7 120) and 168 unique SST prompts across 34 topics (P3 15/P4 30/P5 55/P6 44/P7 24), in compact P3 Q1→P7 Q168 order, each with four unmarked choices and no answer key. The existing-install cleanup retires noncanonical SST rows without deleting history. The in-app setup and migration textareas and all three visible SQL copy/download panels match their source SQL exactly. JavaScript syntax checks and DOM-flow tests confirm Science remains the default with its answer view, admins alone can assign SST, a P7 learner still begins SST at P3 Q1, 20-question sets render SST without answers, Back preserves studied status, repeats reproduce a completed current-bank set, and the next unused set starts at source Q21. Historic retired-set prompts remain visible in progress but cannot be assigned again. `pglast` parsed the outer syntax of eight SQL files (fresh schema/setup, seeds, existing-install migration, verifier, authorization, and profile-security SQL); this does not execute PL/pgSQL function bodies or validate against a database. No Supabase SQL was executed during this refresh. The combined setup and admin authorization were reported successful earlier, so do not rerun them. Whether the refreshed existing-install migration has been applied is unconfirmed. The earlier read-only verifier stopped because the existing `smartple_profiles` table has RLS disabled and permissive grants/policies; `secure_smartple_profiles.sql` is prepared but has not been applied. Live sign-in/progress, full live verification, and device-level PWA installation/offline behavior remain untested.
